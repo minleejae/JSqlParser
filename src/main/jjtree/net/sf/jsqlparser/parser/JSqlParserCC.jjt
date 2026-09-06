@@ -1305,6 +1305,11 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         return Dialect.MYSQL.name().equals(dialect) || Dialect.MARIADB.name().equals(dialect);
     }
 
+    private boolean isXmlTypeName(String name) {
+        return "XML".equalsIgnoreCase(name) || "[XML]".equalsIgnoreCase(name)
+                || "\"XML\"".equalsIgnoreCase(name);
+    }
+
     private void requireDdlSyntax(boolean valid, String message) throws ParseException {
         if (!valid) {
             throw new ParseException(message);
@@ -12668,9 +12673,15 @@ ColDataType ColDataType():
     Token nationalType = null;
     Token varying = null;
     ColDataType.TypeModifier typeModifier = null;
+    XmlTypeModifier xmlTypeModifier = null;
 }
 {
     (
+        LOOKAHEAD({ isXmlTypeName(getToken(1).image) && "(".equals(getToken(2).image) })
+        ( tk=<K_XML> | tk=<S_QUOTED_IDENTIFIER> )
+        { colDataType.setDataType(tk.image); }
+        xmlTypeModifier = XmlTypeModifier() { colDataType.setXmlTypeModifier(xmlTypeModifier); }
+        |
         (
             <K_STRUCT>
             "("
@@ -12788,6 +12799,8 @@ ColDataType ColDataType():
     [ LOOKAHEAD(2) <K_CHARACTER> <K_SET> (tk=<S_IDENTIFIER> | tk=<K_BINARY>) { colDataType.setCharacterSet(tk.image); } ]
 
     {
+        requireDdlSyntax(colDataType.getXmlTypeModifier() == null || argumentsStringList.isEmpty(),
+                "Typed XML cannot have additional type arguments");
         if (argumentsStringList.size() > 0) {
             colDataType.setArgumentsStringList(argumentsStringList);
             // Digits-only arguments are the type's numeric parameters, e.g. mediumint(9).
@@ -12804,6 +12817,25 @@ ColDataType ColDataType():
         }
         return colDataType;
     }
+}
+
+XmlTypeModifier XmlTypeModifier():
+{
+    XmlTypeModifier.Kind kind = null;
+    List<String> names = new ArrayList<String>();
+    String name;
+    Token token;
+}
+{
+    "("
+    [ LOOKAHEAD({ (isKeywordAhead("CONTENT") || isKeywordAhead("DOCUMENT"))
+            && !".".equals(getToken(2).image) && !")".equals(getToken(2).image) })
+        token=<S_IDENTIFIER> { kind = XmlTypeModifier.Kind.valueOf(token.image.toUpperCase(Locale.ROOT)); }
+    ]
+    name=RelObjectName() { names.add(name); }
+    [ "." name=RelObjectNameExt() { names.add(name); } ]
+    ")"
+    { return new XmlTypeModifier(kind, names); }
 }
 
 ColDataType.TypeModifier MySqlTypeModifier():
