@@ -28,6 +28,15 @@ public class ColumnDefinition implements ImportColumn, TableElement, Serializabl
     private ColDataType colDataType;
     private List<String> columnSpecs;
     private List<ColumnOption> columnOptions;
+    private boolean withOptions;
+
+    public boolean isWithOptions() {
+        return withOptions;
+    }
+
+    public void setWithOptions(boolean withOptions) {
+        this.withOptions = withOptions;
+    }
 
     public ColumnDefinition() {}
 
@@ -42,6 +51,13 @@ public class ColumnDefinition implements ImportColumn, TableElement, Serializabl
     }
 
     public List<String> getColumnSpecs() {
+        if (columnOptions != null) {
+            List<String> tokens = new ArrayList<>();
+            for (ColumnOption option : columnOptions) {
+                tokens.addAll(option.getTokens());
+            }
+            return tokens;
+        }
         return columnSpecs;
     }
 
@@ -108,11 +124,12 @@ public class ColumnDefinition implements ImportColumn, TableElement, Serializabl
 
     @Override
     public String toString() {
-        return columnName + " " + toStringDataTypeAndSpec();
+        return (columnName + " " + toStringDataTypeAndSpec()).trim();
     }
 
     public String toStringDataTypeAndSpec() {
         return (colDataType == null ? "" : colDataType)
+                + (withOptions ? "WITH OPTIONS" : "")
                 + (columnOptions != null && !columnOptions.isEmpty()
                         ? " " + PlainSelect.getStringList(columnOptions, false, false)
                         : columnSpecs != null && !columnSpecs.isEmpty()

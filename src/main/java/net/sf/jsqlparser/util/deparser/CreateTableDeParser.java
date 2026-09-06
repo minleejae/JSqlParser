@@ -15,6 +15,7 @@ import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
 import net.sf.jsqlparser.statement.create.table.Index;
+import net.sf.jsqlparser.statement.create.table.TableElement;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
 
@@ -23,7 +24,7 @@ public class CreateTableDeParser extends AbstractDeParser<CreateTable> {
     private StatementDeParser statementDeParser;
 
     public CreateTableDeParser(StringBuilder buffer) {
-        super(buffer);
+        this(new StatementDeParser(buffer), buffer);
     }
 
     public CreateTableDeParser(StatementDeParser statementDeParser, StringBuilder buffer) {
@@ -34,6 +35,8 @@ public class CreateTableDeParser extends AbstractDeParser<CreateTable> {
     @Override
     @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
     public void deParse(CreateTable createTable) {
+        TableElementDeParser elements =
+                new TableElementDeParser(builder, statementDeParser.getExpressionDeParser());
         builder.append("CREATE ");
         if (createTable.isOrReplace()) {
             builder.append("OR REPLACE ");
@@ -52,6 +55,9 @@ public class CreateTableDeParser extends AbstractDeParser<CreateTable> {
             builder.append("IF NOT EXISTS ");
         }
         builder.append(createTable.getTable().getFullyQualifiedName());
+        if (createTable.getOfType() != null) {
+            builder.append(" OF ").append(createTable.getOfType());
+        }
         if (createTable.getPartitionOf() != null) {
             builder.append(" PARTITION OF ")
                     .append(createTable.getPartitionOf().getFullyQualifiedName());
@@ -66,20 +72,22 @@ public class CreateTableDeParser extends AbstractDeParser<CreateTable> {
             }
             builder.append(")");
         }
-        if (createTable.getColumnDefinitions() != null) {
+        if (createTable.getTableElements() != null && !createTable.getTableElements().isEmpty()) {
+            builder.append(" (");
+            for (Iterator<TableElement> iter = createTable.getTableElements().iterator(); iter
+                    .hasNext();) {
+                elements.deParse(iter.next());
+                if (iter.hasNext()) {
+                    builder.append(", ");
+                }
+            }
+            builder.append(")");
+        } else if (createTable.getColumnDefinitions() != null) {
             builder.append(" (");
             for (Iterator<ColumnDefinition> iter =
                     createTable.getColumnDefinitions().iterator(); iter.hasNext();) {
                 ColumnDefinition columnDefinition = iter.next();
-                builder.append(columnDefinition.getColumnName());
-                builder.append(" ");
-                builder.append(columnDefinition.getColDataType().toString());
-                if (columnDefinition.getColumnSpecs() != null) {
-                    for (String s : columnDefinition.getColumnSpecs()) {
-                        builder.append(" ");
-                        builder.append(s);
-                    }
-                }
+                elements.deParse(columnDefinition);
 
                 if (iter.hasNext()) {
                     builder.append(", ");
@@ -89,7 +97,7 @@ public class CreateTableDeParser extends AbstractDeParser<CreateTable> {
             if (createTable.getIndexes() != null) {
                 for (Index index : createTable.getIndexes()) {
                     builder.append(", ");
-                    builder.append(index.toString());
+                    elements.deParse(index);
                 }
             }
 
@@ -123,12 +131,12 @@ public class CreateTableDeParser extends AbstractDeParser<CreateTable> {
                 builder.append(")");
             }
         }
-        if (createTable.getLikeTable() != null) {
+        if (createTable.getTrailingLikeTable() != null) {
             builder.append(" LIKE ");
             if (createTable.isSelectParenthesis()) {
                 builder.append("(");
             }
-            Table table = createTable.getLikeTable();
+            Table table = createTable.getTrailingLikeTable();
             builder.append(table.getFullyQualifiedName());
             if (createTable.isSelectParenthesis()) {
                 builder.append(")");

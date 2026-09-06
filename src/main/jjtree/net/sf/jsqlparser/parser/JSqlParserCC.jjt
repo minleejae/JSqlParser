@@ -1305,6 +1305,42 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         return Dialect.MYSQL.name().equals(dialect) || Dialect.MARIADB.name().equals(dialect);
     }
 
+    private void requireDdlSyntax(boolean valid, String message) throws ParseException {
+        if (!valid) {
+            throw new ParseException(message);
+        }
+    }
+
+    private LikeClause.OptionKind likeOptionKind(String name) throws ParseException {
+        try {
+            return LikeClause.OptionKind.valueOf(name.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new ParseException("Unknown LIKE option: " + name);
+        }
+    }
+
+    private boolean isIdentityAlterationAhead() {
+        int first = getToken(1).kind;
+        int second = getToken(2).kind;
+        if ((first == K_ADD || first == K_SET)
+                && "GENERATED".equalsIgnoreCase(getToken(2).image)) {
+            return true;
+        }
+        if (first == K_RESTART || (first == K_DROP && second == K_IDENTITY)) {
+            return true;
+        }
+        if (first == K_SET) {
+            switch (second) {
+                case K_INCREMENT: case K_START: case K_MINVALUE: case K_MAXVALUE:
+                case K_NO: case K_CACHE: case K_CYCLE:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+        return false;
+    }
+
     private static boolean hasStructuredColumnOption(List<ColumnOption> options) {
         for (ColumnOption option : options) {
             if (option.getKind() != ColumnOption.Kind.OTHER) {
@@ -2736,37 +2772,22 @@ LikeClause LikeClause(): {
     LikeClause likeClause = new LikeClause();
     Table table;
     List<SelectItem<Column>> columnsList;
+    boolean including;
+    String option;
 } {
     <K_LIKE>
     table = Table() { likeClause.setTable(table); }
-    [ "(" columnsList = ColumnSelectItemsList() ")" { likeClause.setColumnsList(columnsList); }]
-
-    [
-        LOOKAHEAD(2)
+    [ LOOKAHEAD(2) "(" columnsList = ColumnSelectItemsList() ")" { likeClause.setColumnsList(columnsList); }]
+    (
         (
-              <K_INCLUDING> { likeClause.setIncludingDefaults(true); }
-            | <K_EXCLUDING> { likeClause.setExcludingDefaults(true); }
+            <K_INCLUDING> { including = true; }
+            | <K_EXCLUDING> { including = false; }
         )
-        <K_DEFAULTS>
-    ]
-
-    [
-        LOOKAHEAD(2)
-        (
-              <K_INCLUDING> { likeClause.setIncludingIdentity(true); }
-            | <K_EXCLUDING> { likeClause.setExcludingIdentity(true); }
-        )
-        <K_IDENTITY>
-    ]
-
-    [
-        LOOKAHEAD(2)
-        (
-              <K_INCLUDING> { likeClause.setIncludingComments(true); }
-            | <K_EXCLUDING> { likeClause.setExcludingComments(true); }
-        )
-        <K_COMMENTS>
-    ]
+        option=RelObjectName()
+        {
+            likeClause.addOption(likeOptionKind(option), including);
+        }
+    )*
 
     {
         return likeClause;
@@ -11407,7 +11428,7 @@ Index.ColumnParams IndexColumnWithParams(): {
         { columnParams.add(sortOrder.image); } ]
     [ LOOKAHEAD(2) <K_NULLS> (nullOrdering=<K_FIRST> | nullOrdering=<K_LAST>)
         { columnParams.add("NULLS"); columnParams.add(nullOrdering.image); } ]
-    ( LOOKAHEAD(2) parameter=CreateParameter() { columnParams.addAll(parameter); } )*
+    ( LOOKAHEAD(2, { getToken(1).kind != K_WITH }) parameter=CreateParameter() { columnParams.addAll(parameter); } )*
     {
         column = expression != null
                 ? new Index.ColumnParams(expression,
@@ -11607,8 +11628,17 @@ ColumnOption ColumnDefinitionOption(): {
     List<String> parameter;
     ForeignKeyReference reference;
     ColumnOption option;
+    IdentityDefinition identity;
+    NamedConstraint constraint;
 } {
     (
+        LOOKAHEAD({ isKeywordAhead("GENERATED")
+                && (getToken(4).kind == K_IDENTITY || getToken(5).kind == K_IDENTITY) })
+        identity=IdentityDefinition() { option = ColumnOption.identity(identity); }
+        |
+        LOOKAHEAD(<K_UNIQUE>) constraint=ColumnUniqueConstraint()
+        { option = ColumnOption.constraint(constraint); }
+        |
         LOOKAHEAD({ isKeywordAhead("SERIAL")
                 && getToken(2).kind == K_DEFAULT && getToken(3).kind == K_VALUE })
         tk=<S_IDENTIFIER> <K_DEFAULT> <K_VALUE>
@@ -11621,6 +11651,40 @@ ColumnOption ColumnDefinitionOption(): {
         { option = ColumnOption.raw(parameter); }
     )
     { return option; }
+}
+
+NamedConstraint ColumnUniqueConstraint():
+{
+    NamedConstraint constraint = new NamedConstraint().withType("UNIQUE");
+    Boolean nullsDistinct = null;
+}
+{
+    <K_UNIQUE>
+    [ <K_NULLS> [ <K_NOT> { nullsDistinct = false; } ] <K_DISTINCT> {
+        constraint.setNullsDistinct(nullsDistinct == null ? true : nullsDistinct);
+    } ]
+    { return constraint; }
+}
+
+IdentityDefinition IdentityDefinition():
+{
+    Token token;
+    IdentityDefinition.GenerationMode mode;
+    IdentityDefinition identity;
+    List<Sequence.Parameter> parameters;
+}
+{
+    token=<S_IDENTIFIER> {
+        requireDdlSyntax("GENERATED".equalsIgnoreCase(token.image), "Expected GENERATED");
+    }
+    ( <K_ALWAYS> { mode = IdentityDefinition.GenerationMode.ALWAYS; }
+        | <K_BY> <K_DEFAULT> { mode = IdentityDefinition.GenerationMode.BY_DEFAULT; } )
+    <K_AS> <K_IDENTITY> { identity = new IdentityDefinition(mode); }
+    [ LOOKAHEAD(2) "(" parameters=SequenceParameters() ")" {
+        requireDdlSyntax(!parameters.isEmpty(), "Expected an identity sequence parameter");
+        identity.setParameters(parameters);
+    } ]
+    { return identity; }
 }
 
 StringValue MySqlAccountNamePart():
@@ -12045,6 +12109,7 @@ Index TableIndexSpec(boolean createContext):
     List<Index.ColumnParams> columns;
     List<String> indexOptions = new ArrayList<String>();
     Index index;
+    Boolean nullsDistinct = null;
 }
 {
     (
@@ -12061,6 +12126,9 @@ Index TableIndexSpec(boolean createContext):
         }
         |
         typeToken=<K_UNIQUE>
+        [ LOOKAHEAD(2) <K_NULLS> [ <K_NOT> { nullsDistinct = false; } ] <K_DISTINCT> {
+            if (nullsDistinct == null) { nullsDistinct = true; }
+        } ]
         [ LOOKAHEAD(2) (keywordToken=<K_KEY> | keywordToken=<K_INDEX>) ]
         [ LOOKAHEAD({ getToken(1).kind != OPENING_BRACKET
                 && getToken(1).kind != K_USING }) indexName=RelObjectName() ]
@@ -12122,6 +12190,8 @@ Index TableIndexSpec(boolean createContext):
                     .withName(indexName).withColumns(columns).withIndexSpec(indexOptions);
         }
     )
+    { index.setNullsDistinct(nullsDistinct); }
+    PostgreSqlConstraintOptions(index)
     { return index; }
 }
 
@@ -12132,10 +12202,51 @@ void TableIndexOptions(boolean createContext, List<String> options):
 {
     (
         LOOKAHEAD({ createContext })
-        ( LOOKAHEAD(2) parameter=CreateParameter() { options.addAll(parameter); } )*
+        ( LOOKAHEAD(2, { !(getToken(1).kind == K_WITH && getToken(2).kind == OPENING_BRACKET)
+                && !(getToken(1).kind == K_USING && getToken(2).kind == K_INDEX)
+                && getToken(1).kind != K_DEFERRABLE && !isKeywordAhead("INITIALLY")
+                && !(getToken(1).kind == K_NOT && (getToken(2).kind == K_DEFERRABLE
+                    || "VALID".equalsIgnoreCase(getToken(2).image))) })
+            parameter=CreateParameter() { options.addAll(parameter); } )*
         |
         LOOKAHEAD({ !createContext }) IndexOptionList(options)
     )
+}
+
+void PostgreSqlConstraintOptions(Index index):
+{
+    List<String> columns;
+    List<Index.Option> parameters;
+    String tableSpace;
+}
+{
+    [ <K_INCLUDE> columns=ColumnsNamesList() { index.setIncludeColumns(columns); } ]
+    [ LOOKAHEAD(2) <K_WITH> parameters=PostgreSqlIndexOptions() { index.setStorageParameters(parameters); } ]
+    [ LOOKAHEAD(3) <K_USING> <K_INDEX> <K_TABLESPACE> tableSpace=RelObjectName() {
+        index.setTableSpace(tableSpace);
+    } ]
+}
+
+void PostgreSqlConstraintAttributes(Index index):
+{
+    ConstraintAttributes attributes = new ConstraintAttributes();
+    boolean present = false;
+    boolean deferrable = true;
+    Token token;
+}
+{
+    [ LOOKAHEAD(2) [ <K_NOT> { deferrable = false; } ] <K_DEFERRABLE> {
+        attributes.setDeferrable(deferrable); present = true;
+    } ]
+    [ LOOKAHEAD({ isKeywordAhead("INITIALLY") }) token=<S_IDENTIFIER> token=<S_IDENTIFIER> {
+        requireDdlSyntax("IMMEDIATE".equalsIgnoreCase(token.image) || "DEFERRED".equalsIgnoreCase(token.image),
+                "Expected IMMEDIATE or DEFERRED");
+        attributes.setInitially(ConstraintAttributes.Initially.valueOf(token.image.toUpperCase(Locale.ROOT)));
+        present = true;
+    } ]
+    [ LOOKAHEAD({ getToken(1).kind == K_NOT && "VALID".equalsIgnoreCase(getToken(2).image) })
+        <K_NOT> token=<S_IDENTIFIER> { attributes.setNotValid(true); present = true; } ]
+    { if (present) { index.setConstraintAttributes(attributes); } }
 }
 
 /**
@@ -12144,14 +12255,10 @@ void TableIndexOptions(boolean createContext, List<String> options):
  */
 Index CreateTableConstraint():
 {
-    Token tk = null;
-    Token tk2 = null;
     String constraintName = null;
     Index index = null;
     ForeignKeyIndex fkIndex = null;
     CheckConstraint checkConstraint = null;
-    ExcludeConstraint excludeConstraint = null;
-    Expression expression = null;
 }
 {
     (
@@ -12159,7 +12266,7 @@ Index CreateTableConstraint():
         |
         <K_CONSTRAINT>
         [ LOOKAHEAD({ !isTableIndexAhead() && getToken(1).kind != K_FOREIGN
-                && getToken(1).kind != K_CHECK }) constraintName=RelObjectName() ]
+                && getToken(1).kind != K_CHECK && getToken(1).kind != K_EXCLUDE }) constraintName=RelObjectName() ]
         (
             LOOKAHEAD({ isTableIndexAhead() }) index=TableIndexSpec(true) {
                 if (index instanceof NamedConstraint) {
@@ -12177,20 +12284,53 @@ Index CreateTableConstraint():
                 checkConstraint.setUseConstraintKeyword(true);
                 index = checkConstraint;
             }
+            |
+            index=PostgreSqlExcludeConstraint() { index.setName(constraintName); }
         )
         |
         fkIndex=ForeignKeySpec(null) { index = fkIndex; }
         |
         checkConstraint=CheckConstraintSpec(null) { index = checkConstraint; }
         |
-        tk=<K_EXCLUDE> { excludeConstraint = new ExcludeConstraint(); }
-        (tk2=<K_WHERE> ("(" expression=Expression() ")")*) {
-            excludeConstraint.setExpression(expression);
-            excludeConstraint.setKind(Index.Kind.EXCLUDE);
-            index = excludeConstraint;
-        }
+        index=PostgreSqlExcludeConstraint()
     )
+    PostgreSqlConstraintAttributes(index)
     { return index; }
+}
+
+ExcludeConstraint PostgreSqlExcludeConstraint():
+{
+    ExcludeConstraint constraint = new ExcludeConstraint();
+    String using;
+    List<Index.ColumnParams> columns = new ArrayList<Index.ColumnParams>();
+    Index.ColumnParams column;
+    Expression predicate;
+}
+{
+    <K_EXCLUDE>
+    [ LOOKAHEAD(2) <K_USING> using=RelObjectName() { constraint.setUsing(using); } ]
+    [ "(" column=PostgreSqlExcludeElement() { columns.add(column); }
+        ( "," column=PostgreSqlExcludeElement() { columns.add(column); } )* ")"
+        { constraint.setColumns(columns); } ]
+    PostgreSqlConstraintOptions(constraint)
+    [ <K_WHERE> "(" predicate=Expression() ")" { constraint.setExpression(predicate); } ]
+    {
+        requireDdlSyntax(constraint.getColumns() != null || constraint.getExpression() != null,
+                "Expected exclusion elements or predicate");
+        return constraint;
+    }
+}
+
+Index.ColumnParams PostgreSqlExcludeElement():
+{
+    Index.ColumnParams column;
+    Token operator;
+}
+{
+    column=IndexColumnWithParams() <K_WITH>
+    ( operator="=" | operator=<OP_NOTEQUALSSTANDARD> | operator=<OP_NOTEQUALSBANG> | operator="<" | operator=">"
+        | operator=<OP_MINORTHANEQUALS> | operator=<OP_GREATERTHANEQUALS> | operator="&&" | operator="@>" | operator="<@" )
+    { column.setExclusionOperator(operator.image); return column; }
 }
 
 
@@ -12218,6 +12358,8 @@ CreateTable CreateTable(boolean isUsingOrReplace):
     TablePartitioning partitioning = null;
     Table partitionOfTable = null;
     PartitionBound partitionBound = null;
+    ColDataType ofType = null;
+    LikeClause likeClause = null;
 }
 {
     { createTable.setOrReplace(isUsingOrReplace);}
@@ -12231,6 +12373,7 @@ CreateTable CreateTable(boolean isUsingOrReplace):
     <K_TABLE>
     [ LOOKAHEAD(2) <K_IF> <K_NOT> <K_EXISTS> { createTable.setIfNotExists(true); }]
     table=Table()
+    [ <K_OF> ofType=ColDataType() { createTable.setOfType(ofType); } ]
     [ LOOKAHEAD(2) <K_PARTITION> <K_OF> partitionOfTable=Table()
         { createTable.setPartitionOf(partitionOfTable); } ]
     [ LOOKAHEAD(2) (
@@ -12241,23 +12384,27 @@ CreateTable CreateTable(boolean isUsingOrReplace):
             (
                 "("
                 (
+                    LOOKAHEAD(<K_LIKE>) likeClause=LikeClause() { tableElements.add(likeClause); }
+                    |
                     LOOKAHEAD(3) index = CreateTableConstraint()
                         { indexes.add(index); tableElements.add(index); }
                     |
-                    coldef = ColumnDefinition()
+                    coldef = CreateTableColumnDefinition(ofType != null)
                         { columnDefinitions.add(coldef); tableElements.add(coldef); }
                 )
 
                 (
                     ","
                     (
+                        LOOKAHEAD(<K_LIKE>) likeClause=LikeClause() { tableElements.add(likeClause); }
+                        |
                         LOOKAHEAD(3) (
                             index = CreateTableConstraint()
                             { indexes.add(index); tableElements.add(index); }
                         )
                         |
                         (
-                            coldef = ColumnDefinition()
+                            coldef = CreateTableColumnDefinition(ofType != null)
                             { columnDefinitions.add(coldef); tableElements.add(coldef); }
                         )
                     )
@@ -12308,6 +12455,29 @@ CreateTable CreateTable(boolean isUsingOrReplace):
             createTable.setColumns(columns);
         return createTable;
     }
+}
+
+ColumnDefinition CreateTableColumnDefinition(boolean typed):
+{
+    ColumnDefinition column = null;
+    String name;
+    List<ColumnOption> options = new ArrayList<ColumnOption>();
+    ColumnOption option;
+    Token token;
+}
+{
+        { if (!typed) { return ColumnDefinition(); } }
+        name=RelObjectName()
+        { column = new ColumnDefinition().withColumnName(name); }
+        [ LOOKAHEAD(2) <K_WITH> token=<S_IDENTIFIER> {
+            if (!"OPTIONS".equalsIgnoreCase(token.image)) {
+                throw new ParseException("Expected OPTIONS after WITH");
+            }
+            column.setWithOptions(true);
+        } ]
+        ( LOOKAHEAD(2) option=ColumnDefinitionOption() { options.add(option); } )*
+        { column.setColumnOptions(options); }
+    { if (true) { return column; } }
 }
 
 TableOption MySqlTableOption(): {
@@ -12708,6 +12878,11 @@ CreateView CreateView(boolean isUsingOrReplace):
     ExpressionList<Column> columnNames = null;
     Token tk = null;
     List<String> commentTokens = null;
+    String name = null;
+    List<Index.Option> storageParameters = null;
+    List<ViewOption> viewOptions = new ArrayList<ViewOption>();
+    ViewOption viewOption = null;
+    boolean withData = true;
 }
 {
     { createView.setOrReplace(isUsingOrReplace);}
@@ -12721,16 +12896,61 @@ CreateView CreateView(boolean isUsingOrReplace):
         | <K_TEMPORARY> { createView.setTemporary(TemporaryOption.TEMPORARY); }
         | <K_VOLATILE> { createView.setTemporary(TemporaryOption.VOLATILE); }
     ]
+    [ <K_RECURSIVE> { createView.setRecursive(true); } ]
     [ <K_MATERIALIZED> { createView.setMaterialized(true);} ]
-    <K_VIEW> view=Table() { createView.setView(view); }
+    <K_VIEW>
+    [ LOOKAHEAD(3) <K_IF> <K_NOT> <K_EXISTS> { createView.setIfNotExists(true); } ]
+    view=Table() { createView.setView(view); }
     [LOOKAHEAD(3) <K_AUTO> <K_REFRESH> (tk=<K_YES> | tk=<K_NO>) { createView.setAutoRefresh(AutoRefreshOption.from(tk.image)); } ]
-    [LOOKAHEAD(3) <K_IF> <K_NOT> <K_EXISTS> {createView.setIfNotExists(true);}]
+    [LOOKAHEAD(3) <K_IF> <K_NOT> <K_EXISTS> {
+        createView.setIfNotExists(true);
+        createView.setIfNotExistsAfterViewName(true);
+    }]
     [ columnNames=ColumnWithCommentList( ) { createView.setColumnNames(columnNames); } ]
     [ commentTokens=CreateViewTailComment( ) { createView.setViewCommentOptions(commentTokens); } ]
+    [ <K_USING> name=RelObjectName() { createView.setAccessMethod(name); } ]
+    [ <K_WITH>
+        (
+            LOOKAHEAD({ createView.isMaterialized() })
+            storageParameters=PostgreSqlIndexOptions() { createView.setStorageParameters(storageParameters); }
+            |
+            "(" viewOption=PostgreSqlViewOption() { viewOptions.add(viewOption); }
+            ( "," viewOption=PostgreSqlViewOption() { viewOptions.add(viewOption); } )* ")"
+            { createView.setOptions(viewOptions); }
+        )
+    ]
+    [ <K_TABLESPACE> name=RelObjectName() { createView.setTableSpace(name); } ]
     <K_AS>
     select=Select( ) { createView.setSelect(select); }
-    [ LOOKAHEAD(2)  <K_WITH> <K_READ> <K_ONLY> { createView.setWithReadOnly(true); } ]
-    { return createView; }
+    [ LOOKAHEAD(2) <K_WITH>
+        (
+            <K_READ> <K_ONLY> { createView.setWithReadOnly(true); }
+            |
+            [ <K_LOCAL> { createView.setCheckOption(CreateView.CheckOption.LOCAL); }
+                | LOOKAHEAD({ isKeywordAhead("CASCADED") }) tk=<S_IDENTIFIER>
+                    { createView.setCheckOption(CreateView.CheckOption.CASCADED); } ]
+            <K_CHECK> <K_OPTION> {
+                if (createView.getCheckOption() == null) {
+                    createView.setCheckOption(CreateView.CheckOption.DEFAULT);
+                }
+            }
+            |
+            [ <K_NO> { withData = false; } ] <K_DATA> { createView.setWithData(withData); }
+        )
+    ]
+    { createView.validateOptions(); return createView; }
+}
+
+ViewOption PostgreSqlViewOption():
+{
+    String name;
+    Expression value = null;
+    boolean useEquals = false;
+}
+{
+    name=RelObjectName()
+    [ "=" { useEquals = true; } value=PrimaryExpression() ]
+    { return new ViewOption(name, value, useEquals); }
 }
 
 List<String> CreateViewTailComment():
@@ -12840,7 +13060,7 @@ CheckConstraint CheckConstraintSpec(String constraintName):
 }
 {
     <K_CHECK> ( LOOKAHEAD(2) "(" exp = Expression() ")" )*
-    [
+    [ LOOKAHEAD(2)
         [ <K_NOT> { enforced = false; } ]
         <K_ENFORCED> { if (enforced == null) { enforced = true; } }
     ]
@@ -13282,22 +13502,79 @@ AlterExpression.ColumnDataType AlterExpressionColumnDataType():
     List<ColumnOption> columnOptions = new ArrayList<ColumnOption>();
     ColumnOption option = null;
     AlterExpression.ColumnDataType result;
+    Expression usingExpression = null;
+    List<IdentityAlteration> identityAlterations = null;
+    IdentityAlteration identityAlteration;
 }
 {
     columnName = RelObjectName()
+    (
+    LOOKAHEAD({ isIdentityAlterationAhead() })
+    { identityAlterations = new ArrayList<IdentityAlteration>(); }
+    identityAlteration=ColumnIdentityAlteration() { identityAlterations.add(identityAlteration); }
+    ( LOOKAHEAD({ isIdentityAlterationAhead() })
+        identityAlteration=ColumnIdentityAlteration() { identityAlterations.add(identityAlteration); } )*
+    |
     ( LOOKAHEAD(2) <K_TYPE> { withType = true; } )?
     ( LOOKAHEAD(2) dataType = ColDataType() )?
-    ( LOOKAHEAD(2) option = ColumnDefinitionOption() {
+    ( LOOKAHEAD(2, { !(withType && getToken(1).kind == K_USING) }) option = ColumnDefinitionOption() {
         columnOptions.add(option);
         columnSpecs.addAll(option.getTokens());
     } )*
+    [ LOOKAHEAD({ withType && getToken(1).kind == K_USING }) <K_USING> usingExpression=Expression() ]
+    )
     {
         result = new AlterExpression.ColumnDataType(columnName, withType, dataType, columnSpecs);
+        result.setUsingExpression(usingExpression);
+        result.setIdentityAlterations(identityAlterations);
         if (hasStructuredColumnOption(columnOptions)) {
             result.setColumnOptions(columnOptions);
         }
         return result;
     }
+}
+
+IdentityAlteration ColumnIdentityAlteration():
+{
+    IdentityAlteration alteration;
+    IdentityDefinition identity;
+    IdentityDefinition.GenerationMode mode;
+    Sequence.Parameter parameter;
+    Long restart = null;
+    Token token;
+}
+{
+    (
+        <K_ADD> identity=IdentityDefinition() {
+            alteration = new IdentityAlteration(IdentityAlteration.Kind.ADD);
+            alteration.setIdentityDefinition(identity);
+        }
+        |
+        <K_SET>
+        (
+            LOOKAHEAD({ isKeywordAhead("GENERATED") }) token=<S_IDENTIFIER>
+            ( <K_ALWAYS> { mode = IdentityDefinition.GenerationMode.ALWAYS; }
+                | <K_BY> <K_DEFAULT> { mode = IdentityDefinition.GenerationMode.BY_DEFAULT; } )
+            {
+                alteration = new IdentityAlteration(IdentityAlteration.Kind.SET_GENERATED);
+                alteration.setGenerationMode(mode);
+            }
+            |
+            parameter=SequenceParameter() {
+                alteration = new IdentityAlteration(IdentityAlteration.Kind.SET_PARAMETER);
+                alteration.setParameters(Collections.singletonList(parameter));
+            }
+        )
+        |
+        <K_RESTART> [ LOOKAHEAD(2) <K_WITH> restart=SequenceParameterValue() ] {
+            alteration = new IdentityAlteration(IdentityAlteration.Kind.RESTART);
+            alteration.setRestartWith(restart);
+        }
+        |
+        <K_DROP> <K_IDENTITY> { alteration = new IdentityAlteration(IdentityAlteration.Kind.DROP); }
+        [ LOOKAHEAD(2) <K_IF> <K_EXISTS> { alteration.setIfExists(true); } ]
+    )
+    { return alteration; }
 }
 
 AlterExpression.ColumnDropNotNull AlterExpressionColumnDropNotNull():
@@ -14953,111 +15230,70 @@ Sequence Sequence() #Sequence :
 
 List<Sequence.Parameter> SequenceParameters():
 {
-  List<Sequence.Parameter> sequenceParameters = new ArrayList<Sequence.Parameter>();
-  Sequence.Parameter parameter = null;
-  Token token = null;
-  Token byToken = null;
-  Token withToken = null;
+    List<Sequence.Parameter> parameters = new ArrayList<Sequence.Parameter>();
+    Sequence.Parameter parameter;
+}
+{
+    ( LOOKAHEAD(2) parameter=SequenceParameter() { parameters.add(parameter); } )*
+    { return parameters; }
+}
+
+Sequence.Parameter SequenceParameter():
+{
+    Sequence.ParameterType type;
+    Long value = null;
+    Token token;
+    boolean withKeyword = false;
 }
 {
     (
-        LOOKAHEAD(2) (
-            (
-                <K_INCREMENT> [ byToken=<K_BY> ] token=<S_LONG>
-                {
-                    if (byToken != null) {
-                      parameter = new Sequence.Parameter(Sequence.ParameterType.INCREMENT_BY);
-                    } else {
-                      parameter = new Sequence.Parameter(Sequence.ParameterType.INCREMENT);
-                    }
-                    parameter.setValue(Long.parseLong(token.image));
-                    sequenceParameters.add(parameter);
-                }
-           )
-           |
-           (
-                <K_START> [ withToken=<K_WITH> ] token=<S_LONG>
-                {
-                    if (withToken != null) {
-                        parameter = new Sequence.Parameter(Sequence.ParameterType.START_WITH);
-                    } else {
-                        parameter = new Sequence.Parameter(Sequence.ParameterType.START);
-                    }
-                    parameter.setValue(Long.parseLong(token.image));
-                    sequenceParameters.add(parameter);
-                }
-            )
-            |
-            (
-                <K_RESTART> [ LOOKAHEAD(2) <K_WITH> token=<S_LONG>]
-                {
-                    parameter = new Sequence.Parameter(Sequence.ParameterType.RESTART_WITH);
-                    if(token != null) {
-                        parameter.setValue(Long.parseLong(token.image));
-                    }
-                    sequenceParameters.add(parameter);
-                }
-            )
-            |
-            <K_NOMAXVALUE>
-            {
-              parameter = new Sequence.Parameter(Sequence.ParameterType.NOMAXVALUE);
-              sequenceParameters.add(parameter);
-            }
-            |
-            <K_MAXVALUE> token=<S_LONG>
-            {
-              parameter = new Sequence.Parameter(Sequence.ParameterType.MAXVALUE);
-              parameter.setValue(Long.parseLong(token.image));
-              sequenceParameters.add(parameter);
-            }
-            |
-            <K_NOMINVALUE>
-            {
-              parameter = new Sequence.Parameter(Sequence.ParameterType.NOMINVALUE);
-              sequenceParameters.add(parameter);
-            }
-            |
-            <K_MINVALUE> token=<S_LONG>
-            {
-              parameter = new Sequence.Parameter(Sequence.ParameterType.MINVALUE);
-              parameter.setValue(Long.parseLong(token.image));
-              sequenceParameters.add(parameter);
-            }
-            |
-            <K_NOCYCLE> { sequenceParameters.add(new Sequence.Parameter(Sequence.ParameterType.NOCYCLE)); }
-            |
-            <K_CYCLE> { sequenceParameters.add(new Sequence.Parameter(Sequence.ParameterType.CYCLE)); }
-            |
-            <K_NOCACHE>
-            {
-              parameter = new Sequence.Parameter(Sequence.ParameterType.NOCACHE);
-              sequenceParameters.add(parameter);
-            }
-            |
-            <K_CACHE> token=<S_LONG>
-            {
-              parameter = new Sequence.Parameter(Sequence.ParameterType.CACHE);
-              parameter.setValue(Long.parseLong(token.image));
-              sequenceParameters.add(parameter);
-            }
-            |
-            <K_ORDER> { sequenceParameters.add(new Sequence.Parameter(Sequence.ParameterType.ORDER)); }
-            |
-            <K_NOORDER> { sequenceParameters.add(new Sequence.Parameter(Sequence.ParameterType.NOORDER)); }
-            |
-            <K_KEEP> { sequenceParameters.add(new Sequence.Parameter(Sequence.ParameterType.KEEP)); }
-            |
-            <K_NOKEEP> { sequenceParameters.add(new Sequence.Parameter(Sequence.ParameterType.NOKEEP)); }
-            |
-            <K_SESSION> { sequenceParameters.add(new Sequence.Parameter(Sequence.ParameterType.SESSION)); }
-            |
-            <K_GLOBAL> { sequenceParameters.add(new Sequence.Parameter(Sequence.ParameterType.GLOBAL)); }
-        )
-    )*
-    {
-        return sequenceParameters;
+        <K_INCREMENT> [ <K_BY> { withKeyword = true; } ] value=SequenceParameterValue()
+        { type = withKeyword ? Sequence.ParameterType.INCREMENT_BY : Sequence.ParameterType.INCREMENT; }
+        |
+        <K_START> [ <K_WITH> { withKeyword = true; } ] value=SequenceParameterValue()
+        { type = withKeyword ? Sequence.ParameterType.START_WITH : Sequence.ParameterType.START; }
+        |
+        <K_RESTART> [ LOOKAHEAD(2) <K_WITH> value=SequenceParameterValue() ]
+        { type = Sequence.ParameterType.RESTART_WITH; }
+        |
+        ( token=<K_MINVALUE> | token=<K_MAXVALUE> | token=<K_CACHE> ) value=SequenceParameterValue()
+        { type = Sequence.ParameterType.valueOf(token.image.toUpperCase(Locale.ROOT)); }
+        |
+        <K_NO> ( token=<K_MINVALUE> | token=<K_MAXVALUE> | token=<K_CYCLE> )
+        { type = Sequence.ParameterType.valueOf("NO_" + token.image.toUpperCase(Locale.ROOT)); }
+        |
+        ( token=<K_NOMINVALUE> | token=<K_NOMAXVALUE> | token=<K_CYCLE> | token=<K_NOCYCLE>
+            | token=<K_NOCACHE> | token=<K_ORDER> | token=<K_NOORDER> | token=<K_KEEP>
+            | token=<K_NOKEEP> | token=<K_SESSION> | token=<K_GLOBAL> )
+        { type = Sequence.ParameterType.valueOf(token.image.toUpperCase(Locale.ROOT)); }
+    )
+    { return new Sequence.Parameter(type).withValue(value); }
+}
+
+Long SequenceParameterValue():
+{
+    Token sign = null;
+    Token value;
+}
+{
+    [ sign="-" | sign="+" ] value=<S_LONG>
+    { return Long.valueOf((sign == null ? "" : sign.image) + value.image); }
+}
+
+SequenceOwnership SequenceOwnership():
+{
+    Token token;
+    Column column;
+    SequenceOwnership ownership;
+}
+{
+    token=<S_IDENTIFIER> {
+        requireDdlSyntax("OWNED".equalsIgnoreCase(token.image), "Expected OWNED");
     }
+    <K_BY>
+    ( LOOKAHEAD(1) <K_NONE> { ownership = SequenceOwnership.none(); }
+        | column=Column() { ownership = SequenceOwnership.ownedBy(column); } )
+    { return ownership; }
 }
 
 CreateSequence CreateSequence():
@@ -15066,11 +15302,13 @@ CreateSequence CreateSequence():
   Sequence sequence;
   List<Sequence.Parameter> sequenceParameters;
   Token dataType = null;
+  SequenceOwnership ownership;
 }
 {
   <K_SEQUENCE> sequence=Sequence() { createSequence.setSequence(sequence); }
   [ <K_AS> ( dataType=<S_IDENTIFIER> | dataType=<DATA_TYPE> ) { sequence.setDataType(dataType.image); } ]
   sequenceParameters = SequenceParameters()
+  [ LOOKAHEAD({ isKeywordAhead("OWNED") }) ownership=SequenceOwnership() { sequence.setOwnership(ownership); } ]
     {
         sequence.setParameters(sequenceParameters);
         return createSequence;
@@ -15082,10 +15320,12 @@ AlterSequence AlterSequence():
   AlterSequence alterSequence = new AlterSequence();
   Sequence sequence;
   List<Sequence.Parameter> sequenceParameters;
+  SequenceOwnership ownership;
 }
 {
     <K_SEQUENCE> sequence=Sequence() { alterSequence.setSequence(sequence); }
     sequenceParameters = SequenceParameters()
+    [ LOOKAHEAD({ isKeywordAhead("OWNED") }) ownership=SequenceOwnership() { sequence.setOwnership(ownership); } ]
     {
         sequence.setParameters(sequenceParameters);
         return alterSequence;

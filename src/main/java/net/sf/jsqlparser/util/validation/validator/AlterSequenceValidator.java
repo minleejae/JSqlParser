@@ -21,6 +21,9 @@ public class AlterSequenceValidator extends AbstractValidator<AlterSequence> {
 
     @Override
     public void validate(AlterSequence statement) {
+        if (statement.getSequence().getOwnership() != null) {
+            validateOptionalExpression(statement.getSequence().getOwnership().getColumn());
+        }
         validateFeatureAndName(Feature.alterSequence, NamedObject.sequence,
                 statement.getSequence().getFullyQualifiedName());
     }

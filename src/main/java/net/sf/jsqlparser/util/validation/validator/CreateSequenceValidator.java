@@ -22,6 +22,9 @@ public class CreateSequenceValidator extends AbstractValidator<CreateSequence> {
 
     @Override
     public void validate(CreateSequence statement) {
+        if (statement.getSequence().getOwnership() != null) {
+            validateOptionalExpression(statement.getSequence().getOwnership().getColumn());
+        }
         for (ValidationCapability c : getCapabilities()) {
             validateFeature(Feature.createSequence);
             validateName(c, NamedObject.sequence, statement.getSequence().getFullyQualifiedName(),

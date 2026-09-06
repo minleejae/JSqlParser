@@ -17,6 +17,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 
@@ -34,6 +35,75 @@ public class Index implements TableElement, Serializable {
     private String commentText;
     private String indexKeyword;
     private Kind kind = Kind.OTHER;
+    private Boolean nullsDistinct;
+    private List<String> includeColumns;
+    private List<Option> storageParameters;
+    private String tableSpace;
+    private ConstraintAttributes constraintAttributes;
+
+    public Boolean getNullsDistinct() {
+        return nullsDistinct;
+    }
+
+    public void setNullsDistinct(Boolean nullsDistinct) {
+        this.nullsDistinct = nullsDistinct;
+    }
+
+    public List<String> getIncludeColumns() {
+        return includeColumns;
+    }
+
+    public void setIncludeColumns(List<String> includeColumns) {
+        this.includeColumns = includeColumns == null ? null : new ArrayList<>(includeColumns);
+    }
+
+    public List<Option> getStorageParameters() {
+        return storageParameters;
+    }
+
+    public void setStorageParameters(List<Option> storageParameters) {
+        this.storageParameters =
+                storageParameters == null ? null : new ArrayList<>(storageParameters);
+    }
+
+    public String getTableSpace() {
+        return tableSpace;
+    }
+
+    public void setTableSpace(String tableSpace) {
+        this.tableSpace = tableSpace;
+    }
+
+    public ConstraintAttributes getConstraintAttributes() {
+        return constraintAttributes;
+    }
+
+    public void setConstraintAttributes(ConstraintAttributes constraintAttributes) {
+        this.constraintAttributes = constraintAttributes;
+    }
+
+    public String nullsDistinctClause() {
+        return nullsDistinct == null ? ""
+                : nullsDistinct ? " NULLS DISTINCT" : " NULLS NOT DISTINCT";
+    }
+
+    public void appendConstraintOptionsTo(StringBuilder sql) {
+        if (includeColumns != null) {
+            sql.append(" INCLUDE ").append(PlainSelect.getStringList(includeColumns, true, true));
+        }
+        if (storageParameters != null) {
+            sql.append(" WITH ").append(PlainSelect.getStringList(storageParameters, true, true));
+        }
+        if (tableSpace != null) {
+            sql.append(" USING INDEX TABLESPACE ").append(tableSpace);
+        }
+    }
+
+    public void appendConstraintAttributesTo(StringBuilder sql) {
+        if (constraintAttributes != null) {
+            constraintAttributes.appendTo(sql);
+        }
+    }
 
     public List<String> getColumnsNames() {
         return columns.stream()
@@ -205,7 +275,13 @@ public class Index implements TableElement, Serializable {
                 : "")
                 + (!idxSpecText.isEmpty() ? " " + idxSpecText : "");
 
-        return tail.isEmpty() ? head : head + " " + tail;
+        StringBuilder sql = new StringBuilder(head).append(nullsDistinctClause());
+        if (!tail.isEmpty()) {
+            sql.append(' ').append(tail);
+        }
+        appendConstraintOptionsTo(sql);
+        appendConstraintAttributesTo(sql);
+        return sql.toString();
     }
 
     public Index withType(String type) {
@@ -258,6 +334,15 @@ public class Index implements TableElement, Serializable {
         private List<Option> operatorClassParameters;
         private SortOrder sortOrder;
         private NullOrdering nullOrdering;
+        private String exclusionOperator;
+
+        public String getExclusionOperator() {
+            return exclusionOperator;
+        }
+
+        public void setExclusionOperator(String exclusionOperator) {
+            this.exclusionOperator = exclusionOperator;
+        }
 
         public ColumnParams(String columnName) {
             this.columnName = columnName;
@@ -366,14 +451,28 @@ public class Index implements TableElement, Serializable {
 
         @Override
         public String toString() {
-            StringBuilder builder = new StringBuilder(
-                    expression != null ? "(" + expression + ")" : columnName);
+            StringBuilder builder = new StringBuilder();
+            appendTo(builder, value -> builder.append(value));
+            return builder.toString();
+        }
+
+        /** Renders expression keys through the caller's expression printer. */
+        public void appendTo(StringBuilder builder, Consumer<Expression> expressionPrinter) {
+            if (expression != null) {
+                builder.append('(');
+                expressionPrinter.accept(expression);
+                builder.append(')');
+            } else {
+                builder.append(columnName);
+            }
             appendParams(builder);
             appendCollation(builder);
             appendOperatorClass(builder);
             appendSortOrder(builder);
             appendNullOrdering(builder);
-            return builder.toString();
+            if (exclusionOperator != null) {
+                builder.append(" WITH ").append(exclusionOperator);
+            }
         }
 
         private void appendParams(StringBuilder builder) {

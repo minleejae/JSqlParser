@@ -146,7 +146,7 @@ public class StatementDeParser extends AbstractDeParser<Statement>
 
     @Override
     public <S> StringBuilder visit(CreateView createView, S context) {
-        CreateViewDeParser createViewDeParser = new CreateViewDeParser(builder);
+        CreateViewDeParser createViewDeParser = new CreateViewDeParser(builder, selectDeParser);
         createViewDeParser.deParse(createView);
         return builder;
     }
@@ -279,7 +279,7 @@ public class StatementDeParser extends AbstractDeParser<Statement>
 
     @Override
     public <S> StringBuilder visit(Alter alter, S context) {
-        AlterDeParser alterDeParser = new AlterDeParser(builder);
+        AlterDeParser alterDeParser = new AlterDeParser(builder, expressionDeParser);
         alterDeParser.deParse(alter);
         return builder;
     }

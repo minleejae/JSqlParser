@@ -25,6 +25,7 @@ public class CreateViewValidator extends AbstractValidator<CreateView> {
 
     @Override
     public void validate(CreateView createView) {
+        createView.validateOptions();
         for (ValidationCapability c : getCapabilities()) {
             validateFeature(c, Feature.createView);
             validateFeature(c, createView.isOrReplace(), Feature.createOrReplaceView);

@@ -65,6 +65,7 @@ public class CheckConstraint extends NamedConstraint {
         if (enforced != null) {
             b.append(enforced ? " ENFORCED" : " NOT ENFORCED");
         }
+        appendConstraintAttributesTo(b);
         return b.toString();
     }
 

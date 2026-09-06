@@ -19,12 +19,36 @@ import net.sf.jsqlparser.statement.select.PlainSelect;
 public class ColumnOption implements Serializable {
 
     public enum Kind {
-        SERIAL_DEFAULT_VALUE, REFERENCE, OTHER
+        SERIAL_DEFAULT_VALUE, REFERENCE, IDENTITY, CONSTRAINT, OTHER
     }
 
     private Kind kind = Kind.OTHER;
     private List<String> tokens;
     private ForeignKeyReference foreignKeyReference;
+    private IdentityDefinition identityDefinition;
+    private Index constraint;
+
+    public static ColumnOption identity(IdentityDefinition definition) {
+        ColumnOption option = new ColumnOption();
+        option.kind = Kind.IDENTITY;
+        option.identityDefinition = definition;
+        return option;
+    }
+
+    public static ColumnOption constraint(Index constraint) {
+        ColumnOption option = new ColumnOption();
+        option.kind = Kind.CONSTRAINT;
+        option.constraint = constraint;
+        return option;
+    }
+
+    public IdentityDefinition getIdentityDefinition() {
+        return identityDefinition;
+    }
+
+    public Index getConstraint() {
+        return constraint;
+    }
 
     public static ColumnOption raw(List<String> tokens) {
         ColumnOption option = new ColumnOption();
@@ -54,8 +78,8 @@ public class ColumnOption implements Serializable {
     }
 
     public List<String> getTokens() {
-        return kind == Kind.REFERENCE ? Collections.singletonList(foreignKeyReference.toString())
-                : tokens;
+        return kind == Kind.OTHER || kind == Kind.SERIAL_DEFAULT_VALUE ? tokens
+                : Collections.singletonList(toString());
     }
 
     public ForeignKeyReference getForeignKeyReference() {
@@ -64,7 +88,15 @@ public class ColumnOption implements Serializable {
 
     @Override
     public String toString() {
-        return kind == Kind.REFERENCE ? foreignKeyReference.toString()
-                : PlainSelect.getStringList(tokens, false, false);
+        switch (kind) {
+            case REFERENCE:
+                return foreignKeyReference.toString();
+            case IDENTITY:
+                return identityDefinition.toString();
+            case CONSTRAINT:
+                return constraint.toString();
+            default:
+                return PlainSelect.getStringList(tokens, false, false);
+        }
     }
 }

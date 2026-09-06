@@ -66,6 +66,7 @@ import net.sf.jsqlparser.statement.update.Update;
 import net.sf.jsqlparser.statement.upsert.Upsert;
 
 import java.util.List;
+import net.sf.jsqlparser.util.TableDefinitionTraversal;
 
 @SuppressWarnings({"PMD.UncommentedEmptyMethodBody"})
 public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
@@ -338,6 +339,12 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
 
     @Override
     public <S> T visit(CreateTable createTable, S context) {
+        TableDefinitionTraversal.visit(createTable,
+                expression -> expression.accept(expressionVisitor, context),
+                table -> table.accept(fromItemVisitor, context));
+        if (createTable.getSelect() != null) {
+            createTable.getSelect().accept(selectVisitor, context);
+        }
         return createTable.getTable().accept(fromItemVisitor, context);
     }
 
@@ -348,12 +355,29 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
 
     @Override
     public <S> T visit(CreateView createView, S context) {
+        createView.getView().accept(fromItemVisitor, context);
+        if (createView.getSelect() != null) {
+            createView.getSelect().accept(selectVisitor, context);
+        }
         return null;
     }
 
     @Override
     public <S> T visit(Alter alter, S context) {
-
+        alter.getTable().accept(fromItemVisitor, context);
+        for (net.sf.jsqlparser.statement.alter.AlterExpression action : alter
+                .getAlterExpressions()) {
+            if (action.getColDataTypeList() != null) {
+                action.getColDataTypeList().forEach(column -> TableDefinitionTraversal.visit(column,
+                        expression -> expression.accept(expressionVisitor, context),
+                        table -> table.accept(fromItemVisitor, context)));
+            }
+            if (action.getIndex() != null) {
+                TableDefinitionTraversal.visit(action.getIndex(),
+                        expression -> expression.accept(expressionVisitor, context),
+                        table -> table.accept(fromItemVisitor, context));
+            }
+        }
         return null;
     }
 
@@ -476,11 +500,21 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
 
     @Override
     public <S> T visit(CreateSequence createSequence, S context) {
+        if (createSequence.getSequence().getOwnership() != null
+                && createSequence.getSequence().getOwnership().getColumn() != null) {
+            createSequence.getSequence().getOwnership().getColumn().accept(expressionVisitor,
+                    context);
+        }
         return null;
     }
 
     @Override
     public <S> T visit(AlterSequence alterSequence, S context) {
+        if (alterSequence.getSequence().getOwnership() != null
+                && alterSequence.getSequence().getOwnership().getColumn() != null) {
+            alterSequence.getSequence().getOwnership().getColumn().accept(expressionVisitor,
+                    context);
+        }
         return null;
     }
 

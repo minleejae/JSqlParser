@@ -18,6 +18,7 @@ import java.util.Optional;
 import net.sf.jsqlparser.expression.SpannerInterleaveIn;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
+import net.sf.jsqlparser.statement.LikeClause;
 import net.sf.jsqlparser.statement.StatementVisitor;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
@@ -35,6 +36,7 @@ public class CreateTable implements Statement {
     private List<TableElement> tableElements;
     private Select select;
     private Table likeTable;
+    private ColDataType ofType;
     private boolean selectParenthesis;
     private boolean ifNotExists = false;
     private boolean orReplace = false;
@@ -195,10 +197,38 @@ public class CreateTable implements Statement {
     }
 
     public Table getLikeTable() {
+        if (likeTable != null) {
+            return likeTable;
+        }
+        List<LikeClause> clauses = getTableElements(LikeClause.class);
+        return clauses.isEmpty() ? null : clauses.get(0).getTable();
+    }
+
+    /** Returns the legacy trailing LIKE source, excluding LIKE clauses inside the definition. */
+    public Table getTrailingLikeTable() {
         return likeTable;
     }
 
+    public ColDataType getOfType() {
+        return ofType;
+    }
+
+    public void setOfType(ColDataType ofType) {
+        this.ofType = ofType;
+    }
+
     public void setLikeTable(Table likeTable, boolean parenthesis) {
+        List<LikeClause> clauses = getTableElements(LikeClause.class);
+        if (this.likeTable == null && !clauses.isEmpty()) {
+            if (likeTable != null) {
+                clauses.get(0).setTable(likeTable);
+            } else {
+                List<TableElement> elements = new ArrayList<>(tableElements);
+                elements.remove(clauses.get(0));
+                setTableElements(elements);
+            }
+            return;
+        }
         this.likeTable = likeTable;
         this.selectParenthesis = parenthesis;
     }
@@ -291,6 +321,9 @@ public class CreateTable implements Statement {
             b.append("IF NOT EXISTS ");
         }
         b.append(table);
+        if (ofType != null) {
+            b.append(" OF ").append(ofType);
+        }
         if (partitionOf != null) {
             b.append(" PARTITION OF ").append(partitionOf);
         }

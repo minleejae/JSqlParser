@@ -10,16 +10,63 @@
 package net.sf.jsqlparser.util.deparser;
 
 import net.sf.jsqlparser.statement.alter.Alter;
+import net.sf.jsqlparser.expression.ExpressionVisitor;
+import net.sf.jsqlparser.statement.alter.AlterExpression;
+import net.sf.jsqlparser.statement.select.PlainSelect;
+import java.util.Iterator;
 
 public class AlterDeParser extends AbstractDeParser<Alter> {
+    private final ExpressionVisitor<StringBuilder> expressionVisitor;
 
     public AlterDeParser(StringBuilder buffer) {
+        this(buffer, new StatementDeParser(buffer).getExpressionDeParser());
+    }
+
+    public AlterDeParser(StringBuilder buffer, ExpressionVisitor<StringBuilder> expressionVisitor) {
         super(buffer);
+        this.expressionVisitor = expressionVisitor;
     }
 
     @Override
     public void deParse(Alter alter) {
-        builder.append(alter.toString());
+        builder.append("ALTER TABLE ");
+        if (alter.isUseOnly()) {
+            builder.append("ONLY ");
+        }
+        if (alter.isUseTableIfExists()) {
+            builder.append("IF EXISTS ");
+        }
+        builder.append(alter.getTable().getFullyQualifiedName()).append(' ');
+        for (Iterator<AlterExpression> iterator = alter.getAlterExpressions().iterator(); iterator
+                .hasNext();) {
+            deParseAction(iterator.next());
+            if (iterator.hasNext()) {
+                builder.append(", ");
+            }
+        }
+    }
+
+    private void deParseAction(AlterExpression action) {
+        if (action.getColDataTypeList() == null || action.getColDataTypeList().size() != 1
+                || action.getColDataTypeList().get(0).getUsingExpression() == null) {
+            builder.append(action);
+            return;
+        }
+        AlterExpression.ColumnDataType column = action.getColDataTypeList().get(0);
+        builder.append(action.getOperation()).append(' ');
+        if (action.hasColumn()) {
+            builder.append("COLUMN ");
+        }
+        if (action.isUsingIfExists()) {
+            builder.append("IF EXISTS ");
+        }
+        builder.append(column.getColumnName()).append(column.isWithType() ? " TYPE " : " ")
+                .append(column.toStringDataTypeAndSpec()).append(" USING ");
+        column.getUsingExpression().accept(expressionVisitor, null);
+        if (action.getParameters() != null && !action.getParameters().isEmpty()) {
+            builder.append(' ')
+                    .append(PlainSelect.getStringList(action.getParameters(), false, false));
+        }
     }
 
 }

@@ -30,6 +30,15 @@ public class Sequence extends ASTNodeAccessImpl implements MultiPartName {
 
     private List<Parameter> parameters;
     private String dataType;
+    private SequenceOwnership ownership;
+
+    public SequenceOwnership getOwnership() {
+        return ownership;
+    }
+
+    public void setOwnership(SequenceOwnership ownership) {
+        this.ownership = ownership;
+    }
 
     public Sequence() {}
 
@@ -151,6 +160,9 @@ public class Sequence extends ASTNodeAccessImpl implements MultiPartName {
                 sql.append(" ").append(parameter.formatParameter());
             }
         }
+        if (ownership != null) {
+            sql.append(' ').append(ownership);
+        }
         return sql.toString();
     }
 
@@ -175,7 +187,7 @@ public class Sequence extends ASTNodeAccessImpl implements MultiPartName {
      * The available parameters to a sequence
      */
     public enum ParameterType {
-        INCREMENT_BY, INCREMENT, START_WITH, START, RESTART_WITH, MAXVALUE, NOMAXVALUE, MINVALUE, NOMINVALUE, CYCLE, NOCYCLE, CACHE, NOCACHE, ORDER, NOORDER, KEEP, NOKEEP, SESSION, GLOBAL;
+        INCREMENT_BY, INCREMENT, START_WITH, START, RESTART_WITH, MAXVALUE, NOMAXVALUE, MINVALUE, NOMINVALUE, CYCLE, NOCYCLE, CACHE, NOCACHE, ORDER, NOORDER, KEEP, NOKEEP, SESSION, GLOBAL, NO_MINVALUE, NO_MAXVALUE, NO_CYCLE;
 
         public static ParameterType from(String type) {
             return Enum.valueOf(ParameterType.class, type.toUpperCase(Locale.ROOT));
@@ -185,7 +197,7 @@ public class Sequence extends ASTNodeAccessImpl implements MultiPartName {
     /**
      * Represents a parameter when declaring a sequence
      */
-    public static class Parameter {
+    public static class Parameter implements java.io.Serializable {
 
         private final ParameterType option;
         private Long value;
@@ -196,6 +208,15 @@ public class Sequence extends ASTNodeAccessImpl implements MultiPartName {
 
         public Long getValue() {
             return value;
+        }
+
+        public ParameterType getOption() {
+            return option;
+        }
+
+        @Override
+        public String toString() {
+            return formatParameter();
         }
 
         public void setValue(Long value) {
@@ -222,6 +243,10 @@ public class Sequence extends ASTNodeAccessImpl implements MultiPartName {
                 case MINVALUE:
                 case CACHE:
                     return prefix(option.name());
+                case NO_MINVALUE:
+                case NO_MAXVALUE:
+                case NO_CYCLE:
+                    return option.name().replace('_', ' ');
                 default:
                     // fallthrough just return option name
                     return option.name();

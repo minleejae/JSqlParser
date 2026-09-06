@@ -13,10 +13,16 @@ import java.util.Collection;
 import java.util.List;
 
 import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.statement.select.PlainSelect;
 
 public class ExcludeConstraint extends Index {
 
     private Expression expression;
+
+    public ExcludeConstraint() {
+        setKind(Kind.EXCLUDE);
+        setType("EXCLUDE");
+    }
 
     public Expression getExpression() {
         return expression;
@@ -28,10 +34,23 @@ public class ExcludeConstraint extends Index {
 
     @Override
     public String toString() {
-        StringBuilder exclusionStatement = new StringBuilder("EXCLUDE WHERE ");
-        exclusionStatement.append("(");
-        exclusionStatement.append(expression);
-        exclusionStatement.append(")");
+        StringBuilder exclusionStatement = new StringBuilder();
+        if (getName() != null) {
+            exclusionStatement.append("CONSTRAINT ").append(getName()).append(' ');
+        }
+        exclusionStatement.append("EXCLUDE");
+        if (getUsing() != null) {
+            exclusionStatement.append(" USING ").append(getUsing());
+        }
+        if (getColumns() != null) {
+            exclusionStatement.append(' ')
+                    .append(PlainSelect.getStringList(getColumns(), true, true));
+        }
+        appendConstraintOptionsTo(exclusionStatement);
+        if (expression != null) {
+            exclusionStatement.append(" WHERE (").append(expression).append(')');
+        }
+        appendConstraintAttributesTo(exclusionStatement);
         return exclusionStatement.toString();
     }
 

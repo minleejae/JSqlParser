@@ -37,6 +37,7 @@ public class CreateViewDeParser extends AbstractDeParser<CreateView> {
     @Override
     @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
     public void deParse(CreateView createView) {
+        createView.validateOptions();
         builder.append("CREATE ");
         if (createView.isOrReplace()) {
             builder.append("OR REPLACE ");
@@ -59,11 +60,18 @@ public class CreateViewDeParser extends AbstractDeParser<CreateView> {
         if (createView.getTemporary() != TemporaryOption.NONE) {
             builder.append(createView.getTemporary().name()).append(" ");
         }
+        if (createView.isRecursive()) {
+            builder.append("RECURSIVE ");
+        }
         if (createView.isMaterialized()) {
             builder.append("MATERIALIZED ");
         }
-        builder.append("VIEW ").append(createView.getView().getFullyQualifiedName());
-        if (createView.isIfNotExists()) {
+        builder.append("VIEW ");
+        if (createView.isIfNotExists() && !createView.isIfNotExistsAfterViewName()) {
+            builder.append("IF NOT EXISTS ");
+        }
+        builder.append(createView.getView().getFullyQualifiedName());
+        if (createView.isIfNotExists() && createView.isIfNotExistsAfterViewName()) {
             builder.append(" IF NOT EXISTS");
         }
         if (createView.getAutoRefresh() != AutoRefreshOption.NONE) {
@@ -78,6 +86,7 @@ public class CreateViewDeParser extends AbstractDeParser<CreateView> {
             builder.append(
                     PlainSelect.getStringList(createView.getViewCommentOptions(), false, false));
         }
+        createView.appendParametersTo(builder);
         builder.append(" AS ");
 
         Select select = createView.getSelect();
@@ -85,6 +94,7 @@ public class CreateViewDeParser extends AbstractDeParser<CreateView> {
         if (createView.isWithReadOnly()) {
             builder.append(" WITH READ ONLY");
         }
+        createView.appendOptionsAfterQueryTo(builder);
     }
 
 }

@@ -12,6 +12,7 @@ package net.sf.jsqlparser.util.validation.validator;
 import net.sf.jsqlparser.parser.feature.Feature;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
 import net.sf.jsqlparser.statement.create.table.Index;
+import net.sf.jsqlparser.util.TableDefinitionTraversal;
 import net.sf.jsqlparser.util.validation.ValidationCapability;
 import net.sf.jsqlparser.util.validation.metadata.NamedObject;
 
@@ -43,6 +44,8 @@ public class CreateTableValidator extends AbstractValidator<CreateTable> {
                     false);
         }
 
+        TableDefinitionTraversal.visit(createTable, this::validateOptionalExpression,
+                this::validateOptionalFromItem);
         if (createTable.getSelect() != null) {
             getValidator(StatementValidator.class).validate(createTable.getSelect());
         }

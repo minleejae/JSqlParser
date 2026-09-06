@@ -174,6 +174,7 @@ public class ForeignKeyIndex extends NamedConstraint {
                     .append(PlainSelect.getStringList(getReferencedColumnNames(), true, true));
             referentialActions.forEach(b::append);
         }
+        appendConstraintAttributesTo(b);
         return b.toString();
     }
 

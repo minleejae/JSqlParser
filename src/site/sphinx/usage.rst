@@ -231,6 +231,48 @@ The fastest way to learn the object model is to look at it. Paste your SQL into 
 Read that as a map: each line is a getter away. ``select.getSelectItems()``, ``select.getFromItem()``, ``select.getWhere()``. Once the tree gets deeper than a couple of levels, stop casting by hand and use :ref:`Use the Visitor Patterns`.
 
 
+Inspect PostgreSQL schema statements
+------------------------------------
+
+PostgreSQL schema clauses extend the existing ``CreateView``, ``CreateTable``, ``Alter`` and ``Sequence`` models. Use their typed properties to inspect the clauses and preserve distinctions between omitted options and explicit values.
+
+.. code-block:: java
+
+    CreateView view = (CreateView) CCJSqlParserUtil.parse(
+            "CREATE MATERIALIZED VIEW IF NOT EXISTS account_totals "
+            + "AS SELECT id FROM accounts WITH NO DATA");
+    view.isMaterialized();       // true
+    view.isIfNotExists();        // true
+    view.getWithData();          // Boolean.FALSE; null means the clause was omitted
+
+Ordinary views expose ordered ``ViewOption`` values for ``security_barrier``, ``security_invoker`` and ``check_option``. ``getCheckOption()`` describes the trailing ``WITH CHECK OPTION`` clause: ``null`` means absent, ``DEFAULT`` preserves the bare clause, and ``LOCAL`` and ``CASCADED`` preserve explicit keywords. ``getEffectiveCheckOption()`` resolves the bare clause to ``CASCADED``. Materialized views expose their access method, storage parameters and tablespace separately. See the PostgreSQL documentation for `CREATE VIEW <https://www.postgresql.org/docs/18/sql-createview.html>`_ and `CREATE MATERIALIZED VIEW <https://www.postgresql.org/docs/18/sql-creatematerializedview.html>`_.
+
+.. code-block:: java
+
+    CreateTable table = (CreateTable) CCJSqlParserUtil.parse(
+            "CREATE TABLE accounts_copy (LIKE accounts INCLUDING ALL EXCLUDING INDEXES)");
+    LikeClause like = table.getTableElements(LikeClause.class).get(0);
+    like.getOptions();                                  // ordered INCLUDING/EXCLUDING clauses
+    like.isIncluding(LikeClause.OptionKind.DEFAULTS);   // true, inherited from ALL
+    like.isIncluding(LikeClause.OptionKind.INDEXES);    // false, overridden by EXCLUDING
+
+``getTableElements()`` preserves the order of columns, constraints and ``LIKE`` clauses, including multiple source tables. The three legacy nullable ``LikeClause`` getters report explicit options of that kind; ``isIncluding(OptionKind)`` also resolves ``ALL`` in declaration order. A typed table's ``OF`` type is available through ``CreateTable.getOfType()``.
+
+Table constraints expose ``Index.getNullsDistinct()``, ``getIncludeColumns()``, storage parameters and ``ConstraintAttributes``. ``ExcludeConstraint`` reuses ``Index.ColumnParams`` for its keys; each key exposes its expression and exclusion operator. Column identity clauses are represented by ``ColumnOption.Kind.IDENTITY`` and ``IdentityDefinition``, with a generation mode and ordered ``Sequence.Parameter`` values. These APIs cover the schema clauses described in `CREATE TABLE <https://www.postgresql.org/docs/18/sql-createtable.html>`_.
+
+.. code-block:: java
+
+    Alter alter = (Alter) CCJSqlParserUtil.parse(
+            "ALTER TABLE accounts ALTER COLUMN id TYPE bigint USING id + 1");
+    AlterExpression.ColumnDataType column = alter.getAlterExpressions().get(0)
+            .getColDataTypeList().get(0);
+    Expression conversion = column.getUsingExpression();
+    column.setUsingExpression(CCJSqlParserUtil.parseExpression("id * 10"));
+    String updatedSql = alter.toString();
+
+Identity alterations are available as ``ColumnDataType.getIdentityAlterations()``. Sequence ownership is shared by ``CreateSequence`` and ``AlterSequence`` through ``Sequence.getOwnership()``: ``null`` means omitted, ``isNone()`` means explicit ``OWNED BY NONE``, and ``getColumn()`` identifies an owner. ``TablesNamesFinder`` includes ``LIKE`` sources and sequence owners without treating sequence or type names as tables. See `ALTER TABLE <https://www.postgresql.org/docs/18/sql-altertable.html>`_ and `ALTER SEQUENCE <https://www.postgresql.org/docs/18/sql-altersequence.html>`_.
+
+
 Classify a Statement
 ==============================
 

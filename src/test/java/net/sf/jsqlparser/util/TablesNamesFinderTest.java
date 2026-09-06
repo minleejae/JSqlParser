@@ -367,23 +367,19 @@ public class TablesNamesFinderTest {
     }
 
     @Test
-    public void testCreateSequence_throwsException() throws JSQLParserException {
+    public void testCreateSequenceHasNoTableReferences() throws JSQLParserException {
         String sql = "CREATE SEQUENCE my_seq";
         Statement stmt = CCJSqlParserUtil.parse(sql);
         TablesNamesFinder tablesNamesFinder = new TablesNamesFinder();
-        assertThatThrownBy(() -> tablesNamesFinder.getTables(stmt))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessage("Finding tables from CreateSequence is not supported");
+        assertThat(tablesNamesFinder.getTables(stmt)).isEmpty();
     }
 
     @Test
-    public void testAlterSequence_throwsException() throws JSQLParserException {
+    public void testAlterSequenceHasNoTableReferences() throws JSQLParserException {
         String sql = "ALTER SEQUENCE my_seq";
         Statement stmt = CCJSqlParserUtil.parse(sql);
         TablesNamesFinder tablesNamesFinder = new TablesNamesFinder();
-        assertThatThrownBy(() -> tablesNamesFinder.getTables(stmt))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessage("Finding tables from AlterSequence is not supported");
+        assertThat(tablesNamesFinder.getTables(stmt)).isEmpty();
     }
 
     @Test

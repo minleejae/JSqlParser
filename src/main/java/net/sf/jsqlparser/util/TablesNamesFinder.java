@@ -1585,6 +1585,8 @@ public class TablesNamesFinder<Void>
     @Override
     public <S> Void visit(CreateTable create, S context) {
         visit(create.getTable(), null);
+        TableDefinitionTraversal.visit(create,
+                expression -> expression.accept(this, context), table -> visit(table, context));
         if (create.getSelect() != null) {
             create.getSelect().accept((SelectVisitor<?>) this, context);
         }
@@ -1626,12 +1628,25 @@ public class TablesNamesFinder<Void>
 
     @Override
     public <S> Void visit(Alter alter, S context) {
+        for (net.sf.jsqlparser.statement.alter.AlterExpression action : alter
+                .getAlterExpressions()) {
+            if (action.getColDataTypeList() != null) {
+                action.getColDataTypeList().forEach(column -> TableDefinitionTraversal.visit(column,
+                        expression -> expression.accept(this, context),
+                        table -> visit(table, context)));
+            }
+            if (action.getIndex() != null) {
+                TableDefinitionTraversal.visit(action.getIndex(),
+                        expression -> expression.accept(this, context),
+                        table -> visit(table, context));
+            }
+        }
         return alter.getTable().accept(this, context);
     }
 
     @Override
     public void visit(Alter alter) {
-        alter.getTable().accept(this, null);
+        StatementVisitor.super.visit(alter);
     }
 
     @Override
@@ -2076,7 +2091,10 @@ public class TablesNamesFinder<Void>
 
     @Override
     public <S> Void visit(CreateSequence createSequence, S context) {
-        throwUnsupported(createSequence);
+        if (createSequence.getSequence().getOwnership() != null
+                && !createSequence.getSequence().getOwnership().isNone()) {
+            visit(createSequence.getSequence().getOwnership().getColumn().getTable(), context);
+        }
         return null;
     }
 
@@ -2087,7 +2105,10 @@ public class TablesNamesFinder<Void>
 
     @Override
     public <S> Void visit(AlterSequence alterSequence, S context) {
-        throwUnsupported(alterSequence);
+        if (alterSequence.getSequence().getOwnership() != null
+                && !alterSequence.getSequence().getOwnership().isNone()) {
+            visit(alterSequence.getSequence().getOwnership().getColumn().getTable(), context);
+        }
         return null;
     }
 

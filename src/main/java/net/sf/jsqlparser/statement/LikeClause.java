@@ -12,26 +12,94 @@ package net.sf.jsqlparser.statement;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.imprt.ImportColumn;
+import net.sf.jsqlparser.statement.create.table.TableElement;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.SelectItem;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Exasol Like Clause
+ * A LIKE clause used in table definitions and Exasol imports.
  *
  * @see <a href="https://docs.exasol.com/db/latest/sql/create_table.htm">Like Clause in CREATE
  *      TABLE</a>
  * @see <a href="https://docs.exasol.com/db/latest/sql/import.htm">Like Clause in IMPORT</a>
  */
-public class LikeClause implements ImportColumn, Serializable {
+public class LikeClause implements ImportColumn, TableElement, Serializable {
     private Table table;
     private List<SelectItem<Column>> columnsList;
 
-    private Boolean includingDefaults;
-    private Boolean includingIdentity;
-    private Boolean includingComments;
+    private List<Option> options = new ArrayList<>();
+
+    public enum OptionKind {
+        ALL, COMMENTS, COMPRESSION, CONSTRAINTS, DEFAULTS, GENERATED, IDENTITY, INDEXES, STATISTICS, STORAGE
+    }
+
+    public static class Option implements Serializable {
+        private final OptionKind kind;
+        private final boolean including;
+
+        public Option(OptionKind kind, boolean including) {
+            this.kind = kind;
+            this.including = including;
+        }
+
+        public OptionKind getKind() {
+            return kind;
+        }
+
+        public boolean isIncluding() {
+            return including;
+        }
+
+        @Override
+        public String toString() {
+            return (including ? "INCLUDING " : "EXCLUDING ") + kind;
+        }
+    }
+
+    /** Options in source order, including repeated options and ALL. */
+    public List<Option> getOptions() {
+        return options;
+    }
+
+    public void setOptions(List<Option> options) {
+        this.options = options == null ? new ArrayList<>() : new ArrayList<>(options);
+    }
+
+    public void addOption(OptionKind kind, boolean including) {
+        options.add(new Option(kind, including));
+    }
+
+    /** Resolves ALL and explicit options in declaration order; omission defaults to exclusion. */
+    public boolean isIncluding(OptionKind kind) {
+        boolean including = false;
+        for (Option option : options) {
+            if (option.getKind() == kind || option.getKind() == OptionKind.ALL) {
+                including = option.isIncluding();
+            }
+        }
+        return including;
+    }
+
+    private Boolean explicitIncluding(OptionKind kind) {
+        Boolean including = null;
+        for (Option option : options) {
+            if (option.getKind() == kind) {
+                including = option.isIncluding();
+            }
+        }
+        return including;
+    }
+
+    private void setIncluding(OptionKind kind, Boolean including) {
+        options.removeIf(option -> option.getKind() == kind);
+        if (including != null) {
+            addOption(kind, including);
+        }
+    }
 
     public Table getTable() {
         return table;
@@ -50,51 +118,51 @@ public class LikeClause implements ImportColumn, Serializable {
     }
 
     public Boolean isIncludingDefaults() {
-        return includingDefaults;
+        return explicitIncluding(OptionKind.DEFAULTS);
     }
 
     public void setIncludingDefaults(Boolean includingDefaults) {
-        this.includingDefaults = includingDefaults;
+        setIncluding(OptionKind.DEFAULTS, includingDefaults);
     }
 
     public Boolean isExcludingDefaults() {
-        return includingDefaults == null ? null : !includingDefaults;
+        return isIncludingDefaults() == null ? null : !isIncludingDefaults();
     }
 
     public void setExcludingDefaults(Boolean excludingDefaults) {
-        this.includingDefaults = !excludingDefaults;
+        setIncludingDefaults(excludingDefaults == null ? null : !excludingDefaults);
     }
 
     public Boolean isIncludingIdentity() {
-        return includingIdentity;
+        return explicitIncluding(OptionKind.IDENTITY);
     }
 
     public void setIncludingIdentity(Boolean includingIdentity) {
-        this.includingIdentity = includingIdentity;
+        setIncluding(OptionKind.IDENTITY, includingIdentity);
     }
 
     public Boolean isExcludingIdentity() {
-        return includingIdentity == null ? null : !includingIdentity;
+        return isIncludingIdentity() == null ? null : !isIncludingIdentity();
     }
 
     public void setExcludingIdentity(Boolean excludingIdentity) {
-        this.includingIdentity = !excludingIdentity;
+        setIncludingIdentity(excludingIdentity == null ? null : !excludingIdentity);
     }
 
     public Boolean isIncludingComments() {
-        return includingComments;
+        return explicitIncluding(OptionKind.COMMENTS);
     }
 
     public void setIncludingComments(Boolean includingComments) {
-        this.includingComments = includingComments;
+        setIncluding(OptionKind.COMMENTS, includingComments);
     }
 
     public Boolean isExcludingComments() {
-        return includingComments == null ? null : !includingComments;
+        return isIncludingComments() == null ? null : !isIncludingComments();
     }
 
     public void setExcludingComments(Boolean excludingComments) {
-        this.includingComments = !excludingComments;
+        setIncludingComments(excludingComments == null ? null : !excludingComments);
     }
 
     public StringBuilder appendTo(StringBuilder builder) {
@@ -105,31 +173,8 @@ public class LikeClause implements ImportColumn, Serializable {
             PlainSelect.appendStringListTo(builder, columnsList, true, true);
         }
 
-        if (includingDefaults != null) {
-            if (includingDefaults) {
-                builder.append(" INCLUDING ");
-            } else {
-                builder.append(" EXCLUDING ");
-            }
-            builder.append(" DEFAULTS ");
-        }
-
-        if (includingIdentity != null) {
-            if (includingIdentity) {
-                builder.append(" INCLUDING ");
-            } else {
-                builder.append(" EXCLUDING ");
-            }
-            builder.append(" IDENTITY ");
-        }
-
-        if (includingComments != null) {
-            if (includingComments) {
-                builder.append(" INCLUDING ");
-            } else {
-                builder.append(" EXCLUDING ");
-            }
-            builder.append(" COMMENTS ");
+        for (Option option : options) {
+            builder.append(' ').append(option);
         }
 
         return builder;
@@ -137,6 +182,6 @@ public class LikeClause implements ImportColumn, Serializable {
 
     @Override
     public String toString() {
-        return appendTo(new StringBuilder()).toString();
+        return appendTo(new StringBuilder()).toString().trim();
     }
 }

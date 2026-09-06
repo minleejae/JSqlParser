@@ -1436,6 +1436,29 @@ public class AlterExpression implements Serializable {
     public static final class ColumnDataType extends ColumnDefinition {
 
         private final boolean withType;
+        private Expression usingExpression;
+        private List<IdentityAlteration> identityAlterations;
+
+        public boolean isWithType() {
+            return withType;
+        }
+
+        public Expression getUsingExpression() {
+            return usingExpression;
+        }
+
+        public void setUsingExpression(Expression usingExpression) {
+            this.usingExpression = usingExpression;
+        }
+
+        public List<IdentityAlteration> getIdentityAlterations() {
+            return identityAlterations;
+        }
+
+        public void setIdentityAlterations(List<IdentityAlteration> identityAlterations) {
+            this.identityAlterations =
+                    identityAlterations == null ? null : new ArrayList<>(identityAlterations);
+        }
 
         public ColumnDataType(boolean withType) {
             super();
@@ -1451,8 +1474,13 @@ public class AlterExpression implements Serializable {
 
         @Override
         public String toString() {
+            if (identityAlterations != null) {
+                return getColumnName() + " "
+                        + PlainSelect.getStringList(identityAlterations, false, false);
+            }
             return getColumnName() + (withType ? " TYPE " : getColDataType() == null ? "" : " ")
-                    + toStringDataTypeAndSpec();
+                    + toStringDataTypeAndSpec()
+                    + (usingExpression == null ? "" : " USING " + usingExpression);
         }
 
         @Override

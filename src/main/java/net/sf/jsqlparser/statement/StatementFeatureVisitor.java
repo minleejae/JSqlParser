@@ -431,7 +431,6 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
         if (createTable.getSelect() != null) {
             // CTAS reads; it does not return a result set - the top level is already claimed
             analysis.certain(StmtFeature.READS_DATA);
-            createTable.getSelect().accept(analysis.selects, context);
         }
         return super.visit(createTable, context);
     }
@@ -440,11 +439,17 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
     public <S> Void visit(CreateView createView, S context) {
         analysis.claimTopLevel();
         analysis.certain(StmtFeature.MODIFIES_SCHEMA);
-        analysis.suppressReads(() -> {
+        if (createView.isMaterialized() && !Boolean.FALSE.equals(createView.getWithData())) {
             if (createView.getSelect() != null) {
-                createView.getSelect().accept(analysis.selects, null);
+                createView.getSelect().accept(analysis.selects, context);
             }
-        });
+        } else {
+            analysis.suppressReads(() -> {
+                if (createView.getSelect() != null) {
+                    createView.getSelect().accept(analysis.selects, null);
+                }
+            });
+        }
         return null;
     }
 

@@ -53,12 +53,20 @@ public class NamedConstraint extends Index {
                                 ? " " + getIndexKeyword()
                                 : "";
         String tail = getType()
+                + nullsDistinctClause()
                 + keyword
                 + (indexName != null ? " " + indexName : "")
                 + (getUsing() != null ? " USING " + getUsing() : "")
-                + " " + PlainSelect.getStringList(getColumnsNames(), true, true) +
+                + (getColumns() == null ? ""
+                        : " " + PlainSelect.getStringList(getColumnsNames(), true, true))
+                +
                 (!"".equals(idxSpecText) ? " " + idxSpecText : "");
-        return head + tail;
+        StringBuilder sql = new StringBuilder(head).append(tail);
+        appendConstraintOptionsTo(sql);
+        if (getKind() != Kind.FOREIGN_KEY) {
+            appendConstraintAttributesTo(sql);
+        }
+        return sql.toString();
     }
 
     public NamedConstraint withIndexName(String indexName) {
