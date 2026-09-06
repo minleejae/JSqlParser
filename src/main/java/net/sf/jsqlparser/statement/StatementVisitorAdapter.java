@@ -14,6 +14,7 @@ import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Partition;
 import net.sf.jsqlparser.statement.alter.Alter;
+import net.sf.jsqlparser.statement.alter.AlterExpression;
 import net.sf.jsqlparser.statement.alter.AlterSession;
 import net.sf.jsqlparser.statement.alter.AlterSystemStatement;
 import net.sf.jsqlparser.statement.alter.RenameTableStatement;
@@ -365,8 +366,7 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
     @Override
     public <S> T visit(Alter alter, S context) {
         alter.getTable().accept(fromItemVisitor, context);
-        for (net.sf.jsqlparser.statement.alter.AlterExpression action : alter
-                .getAlterExpressions()) {
+        for (AlterExpression action : alter.getAlterExpressions()) {
             if (action.getColDataTypeList() != null) {
                 action.getColDataTypeList().forEach(column -> TableDefinitionTraversal.visit(column,
                         expression -> expression.accept(expressionVisitor, context),
