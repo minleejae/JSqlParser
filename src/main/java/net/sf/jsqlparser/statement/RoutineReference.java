@@ -53,7 +53,7 @@ public class RoutineReference implements Serializable {
     }
 
     /** A signature argument is a data type, not an invocation expression. */
-    public static class Argument implements java.io.Serializable {
+    public static class Argument implements Serializable {
         public enum Mode {
             IN, OUT, INOUT, VARIADIC
         }

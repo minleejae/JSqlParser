@@ -56,7 +56,9 @@ class PostgreSqlTypeDdlTest {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                 PostgreSqlTypeDdlTest.class.getResourceAsStream("/postgresql/type-ddl.sql"),
                 StandardCharsets.UTF_8))) {
-            return reader.lines().filter(line -> !line.isEmpty()).collect(Collectors.toList())
+            return reader.lines()
+                    .filter(line -> !line.trim().isEmpty() && !line.trim().startsWith("--"))
+                    .collect(Collectors.toList())
                     .stream();
         }
     }
