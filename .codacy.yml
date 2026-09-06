@@ -1,3 +1,8 @@
 ---
+engines:
+  tsqllint:
+    exclude_paths:
+      # These fixtures use PostgreSQL grammar, not Transact-SQL.
+      - "src/test/resources/postgresql/**"
 exclude_paths:
   - "site/**"

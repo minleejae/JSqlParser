@@ -9,6 +9,12 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.statement.role.CreateRole;
+import net.sf.jsqlparser.statement.role.AlterRole;
+import net.sf.jsqlparser.statement.grant.Revoke;
+import net.sf.jsqlparser.statement.grant.AlterDefaultPrivileges;
+import net.sf.jsqlparser.statement.create.trigger.CreateTrigger;
+
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
@@ -845,5 +851,30 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
             }
             return super.visit(tableFunction, context);
         }
+    }
+
+    @Override
+    public <S> Void visit(CreateRole statement, S context) {
+        return schemaOnly();
+    }
+
+    @Override
+    public <S> Void visit(AlterRole statement, S context) {
+        return schemaOnly();
+    }
+
+    @Override
+    public <S> Void visit(Revoke statement, S context) {
+        return schemaOnly();
+    }
+
+    @Override
+    public <S> Void visit(AlterDefaultPrivileges statement, S context) {
+        return schemaOnly();
+    }
+
+    @Override
+    public <S> Void visit(CreateTrigger statement, S context) {
+        return schemaOnly();
     }
 }
