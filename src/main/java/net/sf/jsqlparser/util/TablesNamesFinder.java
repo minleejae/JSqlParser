@@ -9,6 +9,11 @@
  */
 package net.sf.jsqlparser.util;
 
+import net.sf.jsqlparser.statement.create.publication.CreatePublication;
+import net.sf.jsqlparser.statement.alter.AlterPublication;
+import net.sf.jsqlparser.statement.create.subscription.CreateSubscription;
+import net.sf.jsqlparser.statement.alter.AlterSubscription;
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -2496,5 +2501,33 @@ public class TablesNamesFinder<Void>
     @Override
     public void visit(CreatePolicy createPolicy) {
         StatementVisitor.super.visit(createPolicy);
+    }
+
+    @Override
+    public <S> Void visit(CreatePublication statement, S context) {
+        statement.getTargets().forEach(target -> target.visit(
+                table -> table.accept(this, context),
+                expression -> expression.accept(this, context)));
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterPublication statement, S context) {
+        statement.getTargets().forEach(target -> target.visit(
+                table -> table.accept(this, context),
+                expression -> expression.accept(this, context)));
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(CreateSubscription statement, S context) {
+
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterSubscription statement, S context) {
+
+        return null;
     }
 }

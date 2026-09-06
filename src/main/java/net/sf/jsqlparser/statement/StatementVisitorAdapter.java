@@ -9,6 +9,11 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.statement.create.publication.CreatePublication;
+import net.sf.jsqlparser.statement.alter.AlterPublication;
+import net.sf.jsqlparser.statement.create.subscription.CreateSubscription;
+import net.sf.jsqlparser.statement.alter.AlterSubscription;
+
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
 import net.sf.jsqlparser.schema.Column;
@@ -594,6 +599,58 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
 
     @Override
     public <S> T visit(Export export, S context) {
+        return null;
+    }
+
+    @Override
+    public <S> T visit(CreatePublication statement, S context) {
+        statement.getTargets().forEach(target -> target.visit(
+                table -> table.accept(fromItemVisitor, context),
+                expression -> expression.accept(expressionVisitor, context)));
+        statement.getOptions().forEach(option -> {
+            if (option.getValue() != null) {
+                option.getValue().accept(expressionVisitor, context);
+            }
+        });
+        return null;
+    }
+
+    @Override
+    public <S> T visit(AlterPublication statement, S context) {
+        statement.getTargets().forEach(target -> target.visit(
+                table -> table.accept(fromItemVisitor, context),
+                expression -> expression.accept(expressionVisitor, context)));
+        statement.getOptions().forEach(option -> {
+            if (option.getValue() != null) {
+                option.getValue().accept(expressionVisitor, context);
+            }
+        });
+        return null;
+    }
+
+    @Override
+    public <S> T visit(CreateSubscription statement, S context) {
+        if (statement.getConnection() != null) {
+            statement.getConnection().accept(expressionVisitor, context);
+        }
+        statement.getOptions().forEach(option -> {
+            if (option.getValue() != null) {
+                option.getValue().accept(expressionVisitor, context);
+            }
+        });
+        return null;
+    }
+
+    @Override
+    public <S> T visit(AlterSubscription statement, S context) {
+        if (statement.getConnection() != null) {
+            statement.getConnection().accept(expressionVisitor, context);
+        }
+        statement.getOptions().forEach(option -> {
+            if (option.getValue() != null) {
+                option.getValue().accept(expressionVisitor, context);
+            }
+        });
         return null;
     }
 }

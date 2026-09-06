@@ -559,6 +559,8 @@ public enum Feature {
      * @see CreateSequence
      */
     createSequence,
+    /** Publication and subscription definitions. */
+    createPublication, alterPublication, createSubscription, alterSubscription,
     /**
      * SQL "CREATE SYNONYM" statement is allowed
      *

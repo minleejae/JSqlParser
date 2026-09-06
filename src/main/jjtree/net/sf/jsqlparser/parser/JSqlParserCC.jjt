@@ -48,6 +48,8 @@ import net.sf.jsqlparser.statement.alter.*;
 import net.sf.jsqlparser.statement.alter.sequence.*;
 import net.sf.jsqlparser.statement.comment.*;
 import net.sf.jsqlparser.statement.create.database.*;
+import net.sf.jsqlparser.statement.create.publication.*;
+import net.sf.jsqlparser.statement.create.subscription.*;
 import net.sf.jsqlparser.statement.create.event.*;
 import net.sf.jsqlparser.statement.create.function.*;
 import net.sf.jsqlparser.statement.create.index.*;
@@ -1198,6 +1200,15 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         }
 
         return false;
+    }
+
+    private static void requireReplicationSyntax(boolean valid, String message) throws ParseException {
+        if (!valid) { throw new ParseException(message); }
+    }
+
+    private static <E extends Enum<E>> E replicationEnum(Class<E> type, String value) throws ParseException {
+        try { return Enum.valueOf(type, MultiPartName.unquote(value).toUpperCase(Locale.ROOT)); }
+        catch (IllegalArgumentException exception) { throw new ParseException("Unknown " + type.getSimpleName() + ": " + value); }
     }
 
     private boolean isKeywordAhead(String keyword) {
@@ -14858,6 +14869,10 @@ Statement Alter():
         (
             <K_ALTER>
             (
+                LOOKAHEAD({ isKeywordAhead("PUBLICATION") }) statement = AlterPublication()
+                |
+                LOOKAHEAD({ isKeywordAhead("SUBSCRIPTION") }) statement = AlterSubscription()
+                |
                 statement = AlterEvent()
                 |
                 statement = AlterTable()
@@ -15348,6 +15363,14 @@ Statement Create():
 {
     <K_CREATE> [ <K_OR> <K_REPLACE> { isUsingOrReplace = true; } ]
     (
+        LOOKAHEAD({ isKeywordAhead("PUBLICATION") })
+        { requireReplicationSyntax(!isUsingOrReplace, "OR REPLACE is not supported for CREATE PUBLICATION"); }
+        statement = CreatePublication()
+        |
+        LOOKAHEAD({ isKeywordAhead("SUBSCRIPTION") })
+        { requireReplicationSyntax(!isUsingOrReplace, "OR REPLACE is not supported for CREATE SUBSCRIPTION"); }
+        statement = CreateSubscription()
+        |
         statement = CreateUser()
         |
         statement = CreateEvent()
@@ -15450,6 +15473,168 @@ Synonym Synonym() #Synonym :
 		linkAST(synonym,jjtThis);
         return synonym;
     }
+}
+
+
+void ReplicationKeyword(String expected):
+{ Token token; }
+{ token=<S_IDENTIFIER> { requireReplicationSyntax(expected.equalsIgnoreCase(token.image), "Expected " + expected); } }
+
+Expression ReplicationOptionValue():
+{ Token token; Expression result; }
+{
+    ( LOOKAHEAD(1) token=<K_ON> { result = new Column(token.image); } | result=PrimaryExpression() )
+    { return result; }
+}
+
+PublicationOption PublicationOption():
+{ String name; Expression value = null; }
+{
+    name=RelObjectName() [ "=" value=ReplicationOptionValue() ]
+    { return new PublicationOption(name, replicationEnum(PublicationOption.Kind.class, name), value); }
+}
+
+List<PublicationOption> PublicationOptions():
+{ List<PublicationOption> options = new ArrayList<PublicationOption>(); PublicationOption option; }
+{
+    "(" option=PublicationOption() { options.add(option); }
+    ( "," option=PublicationOption() { options.add(option); } )* ")"
+    { return options; }
+}
+
+SubscriptionOption SubscriptionOption():
+{ String name; Expression value = null; }
+{
+    name=RelObjectName() [ "=" value=ReplicationOptionValue() ]
+    { return new SubscriptionOption(name, replicationEnum(SubscriptionOption.Kind.class, name), value); }
+}
+
+List<SubscriptionOption> SubscriptionOptions():
+{ List<SubscriptionOption> options = new ArrayList<SubscriptionOption>(); SubscriptionOption option; }
+{
+    "(" option=SubscriptionOption() { options.add(option); }
+    ( "," option=SubscriptionOption() { options.add(option); } )* ")"
+    { return options; }
+}
+
+PublicationTable PublicationTable(boolean drop):
+{ PublicationTable result = new PublicationTable(); Table table; String name; Expression expression; ExpressionList<Column> columns; }
+{
+    [ <K_ONLY> { result.setOnly(true); } ]
+    table=Table() { result.setTable(table); }
+    [ "*" { result.setIncludeDescendants(true); } ]
+    [ LOOKAHEAD(1) "(" { columns = new ExpressionList<Column>(); }
+      name=RelObjectName() { columns.add(new Column(name)); }
+      ( "," name=RelObjectName() { columns.add(new Column(name)); } )* ")"
+      { result.setColumns(columns); } ]
+    [ <K_WHERE> "(" expression=Expression() ")" { result.setWhere(expression); } ]
+    {
+        requireReplicationSyntax(!(result.isOnly() && result.isIncludeDescendants()), "ONLY and * cannot be combined");
+        requireReplicationSyntax(!drop || (result.getColumns() == null && result.getWhere() == null), "DROP publication tables cannot have column lists or filters");
+        return result;
+    }
+}
+
+PublicationTarget PublicationTarget(boolean drop):
+{ PublicationTarget result = new PublicationTarget(); PublicationTable table; String schema; }
+{
+    (
+        <K_TABLE> { result.setKind(PublicationTarget.Kind.TABLE); }
+        table=PublicationTable(drop) { result.getTables().add(table); }
+        ( LOOKAHEAD({ getToken(1).image.equals(",") && getToken(2).kind != K_TABLE && getToken(2).kind != K_TABLES })
+          "," table=PublicationTable(drop) { result.getTables().add(table); } )*
+        |
+        <K_TABLES> <K_IN> <K_SCHEMA> { result.setKind(PublicationTarget.Kind.TABLES_IN_SCHEMA); }
+        schema=RelObjectName() { result.getSchemas().add(schema); }
+        ( LOOKAHEAD({ getToken(1).image.equals(",") && getToken(2).kind != K_TABLE && getToken(2).kind != K_TABLES })
+          "," schema=RelObjectName() { result.getSchemas().add(schema); } )*
+    )
+    { return result; }
+}
+
+List<PublicationTarget> PublicationTargets(boolean drop):
+{ List<PublicationTarget> targets = new ArrayList<PublicationTarget>(); PublicationTarget target; }
+{
+    target=PublicationTarget(drop) { targets.add(target); }
+    ( "," target=PublicationTarget(drop) { targets.add(target); } )*
+    { return targets; }
+}
+
+CreatePublication CreatePublication():
+{ CreatePublication result = new CreatePublication(); String name; List<PublicationTarget> targets; List<PublicationOption> options; }
+{
+    ReplicationKeyword("PUBLICATION") name=RelObjectName() { result.setName(name); }
+    [
+        <K_FOR>
+        ( <K_ALL> <K_TABLES> { result.setAllTables(true); }
+          | targets=PublicationTargets(false) { result.setTargets(targets); } )
+    ]
+    [ LOOKAHEAD(2) <K_WITH> options=PublicationOptions() { result.setOptions(options); } ]
+    { return result; }
+}
+
+AlterPublication AlterPublication():
+{ AlterPublication result = new AlterPublication(); String name; List<PublicationTarget> targets; List<PublicationOption> options; boolean drop = false; }
+{
+    ReplicationKeyword("PUBLICATION") name=RelObjectName() { result.setName(name); }
+    (
+        LOOKAHEAD({ isKeywordAhead("OWNER") }) ReplicationKeyword("OWNER") <K_TO>
+        name=RelObjectName() { result.setNewName(name); result.setAction(AlterPublication.Action.OWNER); }
+        | <K_RENAME> <K_TO> name=RelObjectName() { result.setNewName(name); result.setAction(AlterPublication.Action.RENAME); }
+        | LOOKAHEAD(<K_SET> "(") <K_SET> options=PublicationOptions() { result.setOptions(options); result.setAction(AlterPublication.Action.SET_OPTIONS); }
+        | ( <K_ADD> { result.setAction(AlterPublication.Action.ADD); }
+            | <K_SET> { result.setAction(AlterPublication.Action.SET); }
+            | <K_DROP> { result.setAction(AlterPublication.Action.DROP); drop = true; } )
+          targets=PublicationTargets(drop) { result.setTargets(targets); }
+    )
+    { return result; }
+}
+
+List<String> SubscriptionPublications():
+{ List<String> names = new ArrayList<String>(); String name; }
+{
+    name=RelObjectName() { names.add(name); }
+    ( "," name=RelObjectName() { names.add(name); } )*
+    { return names; }
+}
+
+CreateSubscription CreateSubscription():
+{ CreateSubscription result = new CreateSubscription(); String name; Token connection; List<String> publications; List<SubscriptionOption> options; }
+{
+    ReplicationKeyword("SUBSCRIPTION") name=RelObjectName() { result.setName(name); }
+    ReplicationKeyword("CONNECTION") connection=<S_CHAR_LITERAL> { result.setConnection(new StringValue(connection.image)); }
+    ReplicationKeyword("PUBLICATION") publications=SubscriptionPublications() { result.setPublications(publications); }
+    [ LOOKAHEAD(2) <K_WITH> options=SubscriptionOptions() { result.setOptions(options); } ]
+    { return result; }
+}
+
+AlterSubscription AlterSubscription():
+{ AlterSubscription result = new AlterSubscription(); String name; Token connection; List<String> publications; List<SubscriptionOption> options; }
+{
+    ReplicationKeyword("SUBSCRIPTION") name=RelObjectName() { result.setName(name); }
+    (
+        LOOKAHEAD({ isKeywordAhead("CONNECTION") }) ReplicationKeyword("CONNECTION")
+        connection=<S_CHAR_LITERAL> { result.setConnection(new StringValue(connection.image)); result.setAction(AlterSubscription.Action.CONNECTION); }
+        | LOOKAHEAD({ isKeywordAhead("OWNER") }) ReplicationKeyword("OWNER") <K_TO>
+          name=RelObjectName() { result.setNewName(name); result.setAction(AlterSubscription.Action.OWNER); }
+        | <K_RENAME> <K_TO> name=RelObjectName() { result.setNewName(name); result.setAction(AlterSubscription.Action.RENAME); }
+        | <K_ENABLE> { result.setAction(AlterSubscription.Action.ENABLE); }
+        | <K_DISABLE> { result.setAction(AlterSubscription.Action.DISABLE); }
+        | <K_SKIP> options=SubscriptionOptions() {
+              requireReplicationSyntax(options.size() == 1 && options.get(0).getKind() == SubscriptionOption.Kind.LSN
+                      && options.get(0).getValue() != null, "SKIP requires one lsn = value option");
+              result.setOptions(options); result.setAction(AlterSubscription.Action.SKIP);
+          }
+        | LOOKAHEAD(<K_SET> "(") <K_SET> options=SubscriptionOptions() { result.setOptions(options); result.setAction(AlterSubscription.Action.SET_OPTIONS); }
+        | <K_REFRESH> ReplicationKeyword("PUBLICATION") { result.setAction(AlterSubscription.Action.REFRESH_PUBLICATION); }
+          [ LOOKAHEAD(2) <K_WITH> options=SubscriptionOptions() { result.setOptions(options); } ]
+        | ( <K_SET> { result.setAction(AlterSubscription.Action.SET_PUBLICATION); }
+            | <K_ADD> { result.setAction(AlterSubscription.Action.ADD_PUBLICATION); }
+            | <K_DROP> { result.setAction(AlterSubscription.Action.DROP_PUBLICATION); } )
+          ReplicationKeyword("PUBLICATION") publications=SubscriptionPublications() { result.setPublications(publications); }
+          [ LOOKAHEAD(2) <K_WITH> options=SubscriptionOptions() { result.setOptions(options); } ]
+    )
+    { return result; }
 }
 
 CreatePolicy CreatePolicy() #CreatePolicy:

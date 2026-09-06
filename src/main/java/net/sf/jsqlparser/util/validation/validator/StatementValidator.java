@@ -9,6 +9,11 @@
  */
 package net.sf.jsqlparser.util.validation.validator;
 
+import net.sf.jsqlparser.statement.create.publication.CreatePublication;
+import net.sf.jsqlparser.statement.alter.AlterPublication;
+import net.sf.jsqlparser.statement.create.subscription.CreateSubscription;
+import net.sf.jsqlparser.statement.alter.AlterSubscription;
+
 import net.sf.jsqlparser.parser.feature.Feature;
 import net.sf.jsqlparser.statement.Block;
 import net.sf.jsqlparser.statement.Commit;
@@ -658,5 +663,35 @@ public class StatementValidator extends AbstractValidator<Statement>
 
     public void visit(CreatePolicy createPolicy) {
         visit(createPolicy, null);
+    }
+
+    @Override
+    public <S> Void visit(CreatePublication statement, S context) {
+        validateFeature(Feature.createPublication);
+        statement.getTargets().forEach(target -> target.visit(
+                this::validateOptionalFromItem, this::validateOptionalExpression));
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterPublication statement, S context) {
+        validateFeature(Feature.alterPublication);
+        statement.getTargets().forEach(target -> target.visit(
+                this::validateOptionalFromItem, this::validateOptionalExpression));
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(CreateSubscription statement, S context) {
+        validateFeature(Feature.createSubscription);
+
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterSubscription statement, S context) {
+        validateFeature(Feature.alterSubscription);
+
+        return null;
     }
 }

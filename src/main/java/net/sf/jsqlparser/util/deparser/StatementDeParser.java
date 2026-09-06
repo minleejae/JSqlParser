@@ -9,6 +9,11 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
+import net.sf.jsqlparser.statement.create.publication.CreatePublication;
+import net.sf.jsqlparser.statement.alter.AlterPublication;
+import net.sf.jsqlparser.statement.create.subscription.CreateSubscription;
+import net.sf.jsqlparser.statement.alter.AlterSubscription;
+
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -559,6 +564,30 @@ public class StatementDeParser extends AbstractDeParser<Statement>
     @Override
     public <S> StringBuilder visit(CreatePolicy createPolicy, S context) {
         new CreatePolicyDeParser(expressionDeParser, builder).deParse(createPolicy);
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(CreatePublication statement, S context) {
+        statement.appendTo(builder, expression -> expression.accept(expressionDeParser, context));
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(AlterPublication statement, S context) {
+        statement.appendTo(builder, expression -> expression.accept(expressionDeParser, context));
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(CreateSubscription statement, S context) {
+        statement.appendTo(builder, expression -> expression.accept(expressionDeParser, context));
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(AlterSubscription statement, S context) {
+        statement.appendTo(builder, expression -> expression.accept(expressionDeParser, context));
         return builder;
     }
 }

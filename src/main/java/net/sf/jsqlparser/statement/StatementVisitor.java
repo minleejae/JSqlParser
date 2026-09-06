@@ -9,6 +9,11 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.statement.create.publication.CreatePublication;
+import net.sf.jsqlparser.statement.alter.AlterPublication;
+import net.sf.jsqlparser.statement.create.subscription.CreateSubscription;
+import net.sf.jsqlparser.statement.alter.AlterSubscription;
+
 import net.sf.jsqlparser.statement.alter.Alter;
 import net.sf.jsqlparser.statement.alter.AlterSession;
 import net.sf.jsqlparser.statement.alter.AlterSystemStatement;
@@ -393,4 +398,35 @@ public interface StatementVisitor<T> {
         this.visit(createPolicy, null);
     }
 
+    default <S> T visit(CreatePublication statement, S context) {
+        return null;
+    }
+
+    default void visit(CreatePublication statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(AlterPublication statement, S context) {
+        return null;
+    }
+
+    default void visit(AlterPublication statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(CreateSubscription statement, S context) {
+        return null;
+    }
+
+    default void visit(CreateSubscription statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(AlterSubscription statement, S context) {
+        return null;
+    }
+
+    default void visit(AlterSubscription statement) {
+        visit(statement, null);
+    }
 }

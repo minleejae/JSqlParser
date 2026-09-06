@@ -9,6 +9,12 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.statement.create.publication.CreatePublication;
+import net.sf.jsqlparser.statement.alter.AlterPublication;
+import net.sf.jsqlparser.statement.create.subscription.CreateSubscription;
+import net.sf.jsqlparser.statement.create.subscription.SubscriptionOption;
+import net.sf.jsqlparser.statement.alter.AlterSubscription;
+
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
@@ -845,5 +851,49 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
             }
             return super.visit(tableFunction, context);
         }
+    }
+
+    @Override
+    public <S> Void visit(CreatePublication statement, S context) {
+        analysis.claimTopLevel();
+        analysis.certain(StmtFeature.MODIFIES_SCHEMA);
+
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterPublication statement, S context) {
+        analysis.claimTopLevel();
+        analysis.certain(StmtFeature.MODIFIES_SCHEMA);
+
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(CreateSubscription statement, S context) {
+        analysis.claimTopLevel();
+        analysis.certain(StmtFeature.MODIFIES_SCHEMA);
+        if (statement.getOptions().stream()
+                .noneMatch(option -> (option.getKind() == SubscriptionOption.Kind.CONNECT
+                        || option.getKind() == SubscriptionOption.Kind.ENABLED)
+                        && Boolean.FALSE.equals(option.getBooleanValue()))) {
+            // A subscription may start asynchronous replication; the remote contents are unknown.
+            analysis.possible(StmtFeature.MODIFIES_DATA);
+        }
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterSubscription statement, S context) {
+        analysis.claimTopLevel();
+        analysis.certain(StmtFeature.MODIFIES_SCHEMA);
+        if (statement.getAction() == AlterSubscription.Action.ENABLE
+                || statement.getAction() == AlterSubscription.Action.REFRESH_PUBLICATION
+                || statement.getAction() == AlterSubscription.Action.SET_PUBLICATION
+                || statement.getAction() == AlterSubscription.Action.ADD_PUBLICATION
+                || statement.getAction() == AlterSubscription.Action.DROP_PUBLICATION) {
+            analysis.possible(StmtFeature.MODIFIES_DATA);
+        }
+        return null;
     }
 }

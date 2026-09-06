@@ -273,6 +273,39 @@ Table constraints expose ``Index.getNullsDistinct()``, ``getIncludeColumns()``, 
 Identity alterations are available as ``ColumnDataType.getIdentityAlterations()``. Sequence ownership is shared by ``CreateSequence`` and ``AlterSequence`` through ``Sequence.getOwnership()``: ``null`` means omitted, ``isNone()`` means explicit ``OWNED BY NONE``, and ``getColumn()`` identifies an owner. ``TablesNamesFinder`` includes ``LIKE`` sources and sequence owners without treating sequence or type names as tables. See `ALTER TABLE <https://www.postgresql.org/docs/18/sql-altertable.html>`_ and `ALTER SEQUENCE <https://www.postgresql.org/docs/18/sql-altersequence.html>`_.
 
 
+Inspect logical replication statements
+======================================
+
+PostgreSQL publications and subscriptions have separate statement and option models. No database connection is opened when these statements are parsed.
+
+.. code-block:: java
+
+    CreatePublication publication = (CreatePublication) CCJSqlParserUtil.parse(
+            "CREATE PUBLICATION changes FOR TABLE accounts (id) WHERE (active = true)");
+    PublicationTable target = publication.getTargets().get(0).getTables().get(0);
+    Table table = target.getTable();
+    List<Column> columns = target.getColumns();
+    Expression filter = target.getWhere();
+
+A ``PublicationTarget`` distinguishes a group of explicit tables from ``TABLES IN SCHEMA``. Target order, repeated ``TABLE`` groups, ``ONLY`` and an explicit descendant ``*`` are preserved. ``CreatePublication.isAllTables()`` represents ``FOR ALL TABLES``; an empty target list without that flag means no target clause was specified. ``AlterPublication.getAction()`` distinguishes adding, replacing or removing targets from option, owner and name changes.
+
+``PublicationOption`` exposes typed operation sets, partition-root booleans and generated-column modes. ``SubscriptionOption`` has a separate key enum and typed streaming, origin, synchronous-commit and boolean accessors. The ordered option lists contain only explicitly written options; server defaults, which can differ across PostgreSQL versions, are not injected into the AST. A missing value on a boolean option represents its explicit short form, equivalent to ``= true``.
+
+.. code-block:: java
+
+    CreateSubscription subscription = (CreateSubscription) CCJSqlParserUtil.parse(
+            "CREATE SUBSCRIPTION changes_sub CONNECTION 'dbname=app' "
+            + "PUBLICATION changes WITH (connect = false)");
+    StringValue connection = subscription.getConnection();
+    List<String> publications = subscription.getPublications();
+    Boolean connect = subscription.getOptions().get(0).getBooleanValue();
+
+Connection strings remain string literals for lossless SQL regeneration. They can contain credentials and should not be logged without redaction. ``SubscriptionOption.isSlotNameNone()`` distinguishes the unquoted ``NONE`` keyword from a literal slot named ``'NONE'``. ``AlterSubscription`` covers connection changes, publication lists and refresh, enable/disable, options, skip LSN, ownership and renaming.
+
+Publication table columns and row filters participate in visitors and custom expression deparsers. ``TablesNamesFinder`` reports explicitly named publication tables, but cannot enumerate ``ALL TABLES`` or schema-wide targets without a catalog. Publication and subscription names are not table names. Feature classification reports schema modification; a subscription that may start asynchronous replication can additionally report possible data modification.
+
+See `CREATE PUBLICATION <https://www.postgresql.org/docs/18/sql-createpublication.html>`_, `ALTER PUBLICATION <https://www.postgresql.org/docs/18/sql-alterpublication.html>`_, `CREATE SUBSCRIPTION <https://www.postgresql.org/docs/18/sql-createsubscription.html>`_ and `ALTER SUBSCRIPTION <https://www.postgresql.org/docs/18/sql-altersubscription.html>`_.
+
 Classify a Statement
 ==============================
 
