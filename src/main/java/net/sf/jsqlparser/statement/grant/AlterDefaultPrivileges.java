@@ -21,6 +21,10 @@ public class AlterDefaultPrivileges implements Statement {
     }
 
     private RoleKeyword roleKeyword;
+    private List<String> roles;
+    private List<String> schemas;
+    private Grant grant;
+    private Revoke revoke;
 
     public RoleKeyword getRoleKeyword() {
         return roleKeyword;
@@ -30,8 +34,6 @@ public class AlterDefaultPrivileges implements Statement {
         this.roleKeyword = roleKeyword;
     }
 
-    private List<String> roles;
-
     public List<String> getRoles() {
         return roles;
     }
@@ -39,8 +41,6 @@ public class AlterDefaultPrivileges implements Statement {
     public void setRoles(List<String> roles) {
         this.roles = roles;
     }
-
-    private List<String> schemas;
 
     public List<String> getSchemas() {
         return schemas;
@@ -50,8 +50,6 @@ public class AlterDefaultPrivileges implements Statement {
         this.schemas = schemas;
     }
 
-    private Grant grant;
-
     public Grant getGrant() {
         return grant;
     }
@@ -59,8 +57,6 @@ public class AlterDefaultPrivileges implements Statement {
     public void setGrant(Grant grant) {
         this.grant = grant;
     }
-
-    private Revoke revoke;
 
     public Revoke getRevoke() {
         return revoke;

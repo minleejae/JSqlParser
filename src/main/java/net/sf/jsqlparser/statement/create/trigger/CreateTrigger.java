@@ -34,10 +34,6 @@ public class CreateTrigger implements Statement {
         FOLLOWS, PRECEDES
     }
 
-    private TriggerDefiner definer;
-    private Table trigger;
-    private Timing timing;
-
     public enum Orientation {
         ROW, STATEMENT
     }
@@ -46,6 +42,23 @@ public class CreateTrigger implements Statement {
     }
 
     private List<TriggerEvent> events = new ArrayList<>();
+    private TriggerDefiner definer;
+    private Table trigger;
+    private Timing timing;
+    private boolean orReplace;
+    private boolean constraint;
+    private Table referencedTable;
+    private Orientation orientation;
+    private boolean useEach;
+    private Expression whenExpression;
+    private ExecuteKeyword executeKeyword = ExecuteKeyword.FUNCTION;
+    private Function routine;
+    private Table table;
+    private Order order;
+    private Table otherTrigger;
+    private Statement body;
+    private ConstraintAttributes constraintAttributes = new ConstraintAttributes();
+    private List<TransitionRelation> transitionRelations = new ArrayList<>();
 
     public List<TriggerEvent> getEvents() {
         return events;
@@ -55,8 +68,6 @@ public class CreateTrigger implements Statement {
         this.events = events;
     }
 
-    private boolean orReplace;
-
     public boolean isOrReplace() {
         return orReplace;
     }
@@ -64,8 +75,6 @@ public class CreateTrigger implements Statement {
     public void setOrReplace(boolean orReplace) {
         this.orReplace = orReplace;
     }
-
-    private boolean constraint;
 
     public boolean isConstraint() {
         return constraint;
@@ -75,8 +84,6 @@ public class CreateTrigger implements Statement {
         this.constraint = constraint;
     }
 
-    private Table referencedTable;
-
     public Table getReferencedTable() {
         return referencedTable;
     }
@@ -84,8 +91,6 @@ public class CreateTrigger implements Statement {
     public void setReferencedTable(Table referencedTable) {
         this.referencedTable = referencedTable;
     }
-
-    private ConstraintAttributes constraintAttributes = new ConstraintAttributes();
 
     public ConstraintAttributes getConstraintAttributes() {
         return constraintAttributes;
@@ -95,8 +100,6 @@ public class CreateTrigger implements Statement {
         this.constraintAttributes = constraintAttributes;
     }
 
-    private List<TransitionRelation> transitionRelations = new ArrayList<>();
-
     public List<TransitionRelation> getTransitionRelations() {
         return transitionRelations;
     }
@@ -104,8 +107,6 @@ public class CreateTrigger implements Statement {
     public void setTransitionRelations(List<TransitionRelation> transitionRelations) {
         this.transitionRelations = transitionRelations;
     }
-
-    private Orientation orientation;
 
     public Orientation getOrientation() {
         return orientation;
@@ -115,8 +116,6 @@ public class CreateTrigger implements Statement {
         this.orientation = orientation;
     }
 
-    private boolean useEach;
-
     public boolean isUseEach() {
         return useEach;
     }
@@ -124,8 +123,6 @@ public class CreateTrigger implements Statement {
     public void setUseEach(boolean useEach) {
         this.useEach = useEach;
     }
-
-    private Expression whenExpression;
 
     public Expression getWhenExpression() {
         return whenExpression;
@@ -135,8 +132,6 @@ public class CreateTrigger implements Statement {
         this.whenExpression = whenExpression;
     }
 
-    private ExecuteKeyword executeKeyword = ExecuteKeyword.FUNCTION;
-
     public ExecuteKeyword getExecuteKeyword() {
         return executeKeyword;
     }
@@ -145,8 +140,6 @@ public class CreateTrigger implements Statement {
         this.executeKeyword = executeKeyword;
     }
 
-    private Function routine;
-
     public Function getRoutine() {
         return routine;
     }
@@ -154,11 +147,6 @@ public class CreateTrigger implements Statement {
     public void setRoutine(Function routine) {
         this.routine = routine;
     }
-
-    private Table table;
-    private Order order;
-    private Table otherTrigger;
-    private Statement body;
 
     public TriggerDefiner getDefiner() {
         return definer;
@@ -257,6 +245,18 @@ public class CreateTrigger implements Statement {
             sql.append(mysqlSql());
             return;
         }
+        appendPostgreSqlHeader(sql, visitor);
+        appendPostgreSqlTarget(sql);
+        if (whenExpression != null) {
+            sql.append(" WHEN (");
+            visitor.accept(whenExpression);
+            sql.append(')');
+        }
+        sql.append(" EXECUTE ").append(executeKeyword).append(' ');
+        visitor.accept(routine);
+    }
+
+    private void appendPostgreSqlHeader(StringBuilder sql, Consumer<Expression> visitor) {
         sql.append("CREATE ");
         if (orReplace) {
             sql.append("OR REPLACE ");
@@ -272,6 +272,9 @@ public class CreateTrigger implements Statement {
             }
             events.get(i).appendTo(sql, visitor);
         }
+    }
+
+    private void appendPostgreSqlTarget(StringBuilder sql) {
         sql.append(" ON ").append(table);
         if (referencedTable != null) {
             sql.append(" FROM ").append(referencedTable);
@@ -286,13 +289,6 @@ public class CreateTrigger implements Statement {
         if (orientation != null) {
             sql.append(" FOR ").append(useEach ? "EACH " : "").append(orientation);
         }
-        if (whenExpression != null) {
-            sql.append(" WHEN (");
-            visitor.accept(whenExpression);
-            sql.append(')');
-        }
-        sql.append(" EXECUTE ").append(executeKeyword).append(' ');
-        visitor.accept(routine);
     }
 
     @Override

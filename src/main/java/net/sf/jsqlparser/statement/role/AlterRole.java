@@ -23,6 +23,18 @@ public class AlterRole implements Statement {
     }
 
     private CreateRole.Command command = CreateRole.Command.ROLE;
+    private String name;
+    private Action action;
+    private boolean useWith;
+    private String newName;
+    private String database;
+    private String parameter;
+    private boolean useEquals;
+    private boolean fromCurrent;
+    private boolean useDefault;
+    private ExpressionList<Expression> values;
+    private List<String> users;
+    private List<RoleOption> options = new ArrayList<>();
 
     public CreateRole.Command getCommand() {
         return command;
@@ -32,8 +44,6 @@ public class AlterRole implements Statement {
         this.command = command;
     }
 
-    private String name;
-
     public String getName() {
         return name;
     }
@@ -41,8 +51,6 @@ public class AlterRole implements Statement {
     public void setName(String name) {
         this.name = name;
     }
-
-    private Action action;
 
     public Action getAction() {
         return action;
@@ -52,8 +60,6 @@ public class AlterRole implements Statement {
         this.action = action;
     }
 
-    private boolean useWith;
-
     public boolean isUseWith() {
         return useWith;
     }
@@ -61,8 +67,6 @@ public class AlterRole implements Statement {
     public void setUseWith(boolean useWith) {
         this.useWith = useWith;
     }
-
-    private List<RoleOption> options = new ArrayList<>();
 
     public List<RoleOption> getOptions() {
         return options;
@@ -72,8 +76,6 @@ public class AlterRole implements Statement {
         this.options = options;
     }
 
-    private String newName;
-
     public String getNewName() {
         return newName;
     }
@@ -81,8 +83,6 @@ public class AlterRole implements Statement {
     public void setNewName(String newName) {
         this.newName = newName;
     }
-
-    private String database;
 
     public String getDatabase() {
         return database;
@@ -92,8 +92,6 @@ public class AlterRole implements Statement {
         this.database = database;
     }
 
-    private String parameter;
-
     public String getParameter() {
         return parameter;
     }
@@ -101,8 +99,6 @@ public class AlterRole implements Statement {
     public void setParameter(String parameter) {
         this.parameter = parameter;
     }
-
-    private boolean useEquals;
 
     public boolean isUseEquals() {
         return useEquals;
@@ -112,8 +108,6 @@ public class AlterRole implements Statement {
         this.useEquals = useEquals;
     }
 
-    private boolean fromCurrent;
-
     public boolean isFromCurrent() {
         return fromCurrent;
     }
@@ -121,8 +115,6 @@ public class AlterRole implements Statement {
     public void setFromCurrent(boolean fromCurrent) {
         this.fromCurrent = fromCurrent;
     }
-
-    private boolean useDefault;
 
     public boolean isUseDefault() {
         return useDefault;
@@ -132,8 +124,6 @@ public class AlterRole implements Statement {
         this.useDefault = useDefault;
     }
 
-    private ExpressionList<Expression> values;
-
     public ExpressionList<Expression> getValues() {
         return values;
     }
@@ -141,8 +131,6 @@ public class AlterRole implements Statement {
     public void setValues(ExpressionList<Expression> values) {
         this.values = values;
     }
-
-    private List<String> users;
 
     public List<String> getUsers() {
         return users;

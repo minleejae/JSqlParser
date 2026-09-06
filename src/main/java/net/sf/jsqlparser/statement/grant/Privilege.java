@@ -16,13 +16,14 @@ import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.schema.Column;
 
 public class Privilege implements Serializable {
-    private String legacyName;
-
     public enum Kind {
         ALL, SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN, USAGE, CREATE, CONNECT, TEMPORARY, TEMP, EXECUTE, SET, ALTER_SYSTEM, ALTER, DROP
     }
 
+    private String legacyName;
     private Kind kind;
+    private boolean usePrivileges;
+    private ExpressionList<Column> columns;
 
     public Kind getKind() {
         return kind;
@@ -32,8 +33,6 @@ public class Privilege implements Serializable {
         this.kind = kind;
     }
 
-    private boolean usePrivileges;
-
     public boolean isUsePrivileges() {
         return usePrivileges;
     }
@@ -41,8 +40,6 @@ public class Privilege implements Serializable {
     public void setUsePrivileges(boolean usePrivileges) {
         this.usePrivileges = usePrivileges;
     }
-
-    private ExpressionList<Column> columns;
 
     public ExpressionList<Column> getColumns() {
         return columns;

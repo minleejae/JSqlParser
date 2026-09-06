@@ -17,6 +17,7 @@ import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 
 public class TriggerEvent implements Serializable {
     private CreateTrigger.Event event;
+    private ExpressionList<Column> columns;
 
     public CreateTrigger.Event getEvent() {
         return event;
@@ -25,8 +26,6 @@ public class TriggerEvent implements Serializable {
     public void setEvent(CreateTrigger.Event event) {
         this.event = event;
     }
-
-    private ExpressionList<Column> columns;
 
     public ExpressionList<Column> getColumns() {
         return columns;

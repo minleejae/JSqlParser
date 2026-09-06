@@ -19,6 +19,10 @@ import net.sf.jsqlparser.schema.Table;
 /** Shared, editable GRANT/REVOKE payload. Null privileges denote role membership. */
 public class PrivilegeClause implements Serializable {
     private List<Privilege> privileges;
+    private List<String> grantees;
+    private String grantedBy;
+    private List<String> roles = new ArrayList<>();
+    private PrivilegeTarget target = new PrivilegeTarget();
 
     public List<Privilege> getPrivileges() {
         return privileges;
@@ -28,8 +32,6 @@ public class PrivilegeClause implements Serializable {
         this.privileges = privileges;
     }
 
-    private List<String> roles = new ArrayList<>();
-
     public List<String> getRoles() {
         return roles;
     }
@@ -37,8 +39,6 @@ public class PrivilegeClause implements Serializable {
     public void setRoles(List<String> roles) {
         this.roles = roles;
     }
-
-    private PrivilegeTarget target = new PrivilegeTarget();
 
     public PrivilegeTarget getTarget() {
         return target;
@@ -48,8 +48,6 @@ public class PrivilegeClause implements Serializable {
         this.target = target;
     }
 
-    private List<String> grantees;
-
     public List<String> getGrantees() {
         return grantees;
     }
@@ -57,8 +55,6 @@ public class PrivilegeClause implements Serializable {
     public void setGrantees(List<String> grantees) {
         this.grantees = grantees;
     }
-
-    private String grantedBy;
 
     public String getGrantedBy() {
         return grantedBy;

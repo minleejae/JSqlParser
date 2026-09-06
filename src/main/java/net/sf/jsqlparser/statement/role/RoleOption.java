@@ -21,6 +21,9 @@ public class RoleOption implements Serializable {
     }
 
     private Kind kind;
+    private Expression value;
+    private boolean encrypted;
+    private List<String> roles;
 
     public Kind getKind() {
         return kind;
@@ -30,8 +33,6 @@ public class RoleOption implements Serializable {
         this.kind = kind;
     }
 
-    private Expression value;
-
     public Expression getValue() {
         return value;
     }
@@ -40,8 +41,6 @@ public class RoleOption implements Serializable {
         this.value = value;
     }
 
-    private boolean encrypted;
-
     public boolean isEncrypted() {
         return encrypted;
     }
@@ -49,8 +48,6 @@ public class RoleOption implements Serializable {
     public void setEncrypted(boolean encrypted) {
         this.encrypted = encrypted;
     }
-
-    private List<String> roles;
 
     public List<String> getRoles() {
         return roles;

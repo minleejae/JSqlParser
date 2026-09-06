@@ -24,6 +24,11 @@ public class PrivilegeTarget implements Serializable {
     }
 
     private Kind kind = Kind.TABLE;
+    private boolean explicitKind;
+    private boolean allInSchema;
+    private boolean defaultPrivileges;
+    private List<List<String>> names = new ArrayList<>();
+    private List<RoutineReference> routines = new ArrayList<>();
 
     public Kind getKind() {
         return kind;
@@ -33,8 +38,6 @@ public class PrivilegeTarget implements Serializable {
         this.kind = kind;
     }
 
-    private boolean explicitKind;
-
     public boolean isExplicitKind() {
         return explicitKind;
     }
@@ -42,8 +45,6 @@ public class PrivilegeTarget implements Serializable {
     public void setExplicitKind(boolean explicitKind) {
         this.explicitKind = explicitKind;
     }
-
-    private boolean allInSchema;
 
     public boolean isAllInSchema() {
         return allInSchema;
@@ -53,8 +54,6 @@ public class PrivilegeTarget implements Serializable {
         this.allInSchema = allInSchema;
     }
 
-    private boolean defaultPrivileges;
-
     public boolean isDefaultPrivileges() {
         return defaultPrivileges;
     }
@@ -63,8 +62,6 @@ public class PrivilegeTarget implements Serializable {
         this.defaultPrivileges = defaultPrivileges;
     }
 
-    private List<List<String>> names = new ArrayList<>();
-
     public List<List<String>> getNames() {
         return names;
     }
@@ -72,8 +69,6 @@ public class PrivilegeTarget implements Serializable {
     public void setNames(List<List<String>> names) {
         this.names = names;
     }
-
-    private List<RoutineReference> routines = new ArrayList<>();
 
     public List<RoutineReference> getRoutines() {
         return routines;

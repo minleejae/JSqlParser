@@ -20,6 +20,8 @@ public class Revoke implements Statement {
     }
 
     private PrivilegeClause clause = new PrivilegeClause();
+    private GrantOption.Kind optionFor;
+    private Behavior behavior;
 
     public PrivilegeClause getClause() {
         return clause;
@@ -29,8 +31,6 @@ public class Revoke implements Statement {
         this.clause = clause;
     }
 
-    private GrantOption.Kind optionFor;
-
     public GrantOption.Kind getOptionFor() {
         return optionFor;
     }
@@ -38,8 +38,6 @@ public class Revoke implements Statement {
     public void setOptionFor(GrantOption.Kind optionFor) {
         this.optionFor = optionFor;
     }
-
-    private Behavior behavior;
 
     public Behavior getBehavior() {
         return behavior;

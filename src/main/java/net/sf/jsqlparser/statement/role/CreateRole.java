@@ -22,6 +22,9 @@ public class CreateRole implements Statement {
     }
 
     private Command command = Command.ROLE;
+    private String name;
+    private boolean useWith;
+    private List<RoleOption> options = new ArrayList<>();
 
     public Command getCommand() {
         return command;
@@ -31,8 +34,6 @@ public class CreateRole implements Statement {
         this.command = command;
     }
 
-    private String name;
-
     public String getName() {
         return name;
     }
@@ -41,8 +42,6 @@ public class CreateRole implements Statement {
         this.name = name;
     }
 
-    private boolean useWith;
-
     public boolean isUseWith() {
         return useWith;
     }
@@ -50,8 +49,6 @@ public class CreateRole implements Statement {
     public void setUseWith(boolean useWith) {
         this.useWith = useWith;
     }
-
-    private List<RoleOption> options = new ArrayList<>();
 
     public List<RoleOption> getOptions() {
         return options;

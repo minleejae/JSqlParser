@@ -20,6 +20,7 @@ public class GrantOption implements Serializable {
     }
 
     private Kind kind;
+    private Value value = Value.OPTION;
 
     public Kind getKind() {
         return kind;
@@ -28,8 +29,6 @@ public class GrantOption implements Serializable {
     public void setKind(Kind kind) {
         this.kind = kind;
     }
-
-    private Value value = Value.OPTION;
 
     public Value getValue() {
         return value;

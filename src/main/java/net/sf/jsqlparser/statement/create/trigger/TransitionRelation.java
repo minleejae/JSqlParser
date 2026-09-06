@@ -17,6 +17,8 @@ public class TransitionRelation implements Serializable {
     }
 
     private Image image;
+    private String name;
+    private boolean useAs;
 
     public Image getImage() {
         return image;
@@ -26,8 +28,6 @@ public class TransitionRelation implements Serializable {
         this.image = image;
     }
 
-    private String name;
-
     public String getName() {
         return name;
     }
@@ -35,8 +35,6 @@ public class TransitionRelation implements Serializable {
     public void setName(String name) {
         this.name = name;
     }
-
-    private boolean useAs;
 
     public boolean isUseAs() {
         return useAs;
