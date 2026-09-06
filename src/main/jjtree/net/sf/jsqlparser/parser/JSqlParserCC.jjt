@@ -1205,6 +1205,11 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         return token.image != null && keyword.equalsIgnoreCase(token.image);
     }
 
+    private boolean isXmlTypeName(String name) {
+        return "XML".equalsIgnoreCase(name) || "[XML]".equalsIgnoreCase(name)
+                || "\"XML\"".equalsIgnoreCase(name);
+    }
+
     private boolean isMySqlTableOptionAhead() {
         int kind = getToken(1).kind;
         if (kind == K_ENGINE || kind == K_COLLATE || kind == K_COMMENT
@@ -1303,11 +1308,6 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
     private boolean isMySqlDialect() {
         String dialect = getAsString(Feature.dialect);
         return Dialect.MYSQL.name().equals(dialect) || Dialect.MARIADB.name().equals(dialect);
-    }
-
-    private boolean isXmlTypeName(String name) {
-        return "XML".equalsIgnoreCase(name) || "[XML]".equalsIgnoreCase(name)
-                || "\"XML\"".equalsIgnoreCase(name);
     }
 
     private void requireDdlSyntax(boolean valid, String message) throws ParseException {
