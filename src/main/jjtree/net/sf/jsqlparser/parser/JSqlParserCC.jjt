@@ -14138,6 +14138,23 @@ AlterExpression AlterExpressionDiscardOrImport():
 
 
 /**
+ * Parses SQL Server's [CONSTRAINT name] DEFAULT expression FOR column [WITH VALUES].
+ */
+DefaultConstraint DefaultConstraintSpec():
+{
+    DefaultConstraint constraint = new DefaultConstraint();
+    String name;
+    Expression expression;
+}
+{
+    [ <K_CONSTRAINT> name=RelObjectName() { constraint.setName(name); } ]
+    <K_DEFAULT> expression=Expression() { constraint.setExpression(expression); }
+    <K_FOR> name=RelObjectName() { constraint.setColumn(new Column(name)); }
+    [ <K_WITH> <K_VALUES> { constraint.setWithValues(true); } ]
+    { return constraint; }
+}
+
+/**
  * Parses ADD/ALTER CONSTRAINT clause within AlterExpression.
  * Handles: CONSTRAINT [UNIQUE [KEY|INDEX]] name columns
  *          CONSTRAINT name (FOREIGN KEY|PRIMARY KEY|UNIQUE|KEY|CHECK|[NOT] ENFORCED)
@@ -14422,6 +14439,13 @@ AlterExpression AlterExpressionAddAlterModify():
     )
 
     (
+        LOOKAHEAD({ getToken(1).kind == K_DEFAULT || getToken(1).kind == K_CONSTRAINT
+                && getToken(3).kind == K_DEFAULT }) index=DefaultConstraintSpec() {
+            requireDdlSyntax(alterExp.getOperation() == AlterOperation.ADD,
+                    "Table-level DEFAULT constraints require ADD");
+            alterExp.setIndex(index);
+        }
+        |
         LOOKAHEAD({ alterExp.getOperation() == AlterOperation.ALTER
                 && getToken(1).kind == K_INDEX })
         tk=<K_INDEX> sk3=RelObjectName() IndexOptionList(indexSpec) {

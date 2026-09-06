@@ -12,6 +12,7 @@ package net.sf.jsqlparser.util.deparser;
 import net.sf.jsqlparser.statement.alter.Alter;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.statement.alter.AlterExpression;
+import net.sf.jsqlparser.statement.create.table.DefaultConstraint;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import java.util.Iterator;
 
@@ -47,6 +48,12 @@ public class AlterDeParser extends AbstractDeParser<Alter> {
     }
 
     private void deParseAction(AlterExpression action) {
+        if (action.getIndex() instanceof DefaultConstraint) {
+            builder.append(action.getOperation()).append(' ');
+            new TableElementDeParser(builder, expressionVisitor).deParse(action.getIndex());
+            deParseTail(action);
+            return;
+        }
         if (action.getColDataTypeList() == null || action.getColDataTypeList().size() != 1
                 || action.getColDataTypeList().get(0).getUsingExpression() == null) {
             builder.append(action);
@@ -63,9 +70,16 @@ public class AlterDeParser extends AbstractDeParser<Alter> {
         builder.append(column.getColumnName()).append(column.isWithType() ? " TYPE " : " ")
                 .append(column.toStringDataTypeAndSpec()).append(" USING ");
         column.getUsingExpression().accept(expressionVisitor, null);
+        deParseTail(action);
+    }
+
+    private void deParseTail(AlterExpression action) {
         if (action.getParameters() != null && !action.getParameters().isEmpty()) {
             builder.append(' ')
                     .append(PlainSelect.getStringList(action.getParameters(), false, false));
+        }
+        if (action.getIndex() != null && action.getIndex().getCommentText() != null) {
+            builder.append(" COMMENT ").append(action.getIndex().getCommentText());
         }
     }
 

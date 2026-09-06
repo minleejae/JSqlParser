@@ -19,6 +19,7 @@ import net.sf.jsqlparser.statement.create.table.CheckConstraint;
 import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
 import net.sf.jsqlparser.statement.create.table.ColumnOption;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
+import net.sf.jsqlparser.statement.create.table.DefaultConstraint;
 import net.sf.jsqlparser.statement.create.table.ExcludeConstraint;
 import net.sf.jsqlparser.statement.create.table.ForeignKeyIndex;
 import net.sf.jsqlparser.statement.create.table.Index;
@@ -74,6 +75,11 @@ public final class TableDefinitionTraversal {
             visitOptions(index.getStorageParameters(), expressions);
             if (index instanceof CheckConstraint) {
                 accept(((CheckConstraint) index).getExpression(), expressions);
+            }
+            if (index instanceof DefaultConstraint) {
+                DefaultConstraint constraint = (DefaultConstraint) index;
+                accept(constraint.getExpression(), expressions);
+                accept(constraint.getColumn(), expressions);
             }
             if (index instanceof ExcludeConstraint) {
                 accept(((ExcludeConstraint) index).getExpression(), expressions);
