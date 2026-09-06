@@ -10751,26 +10751,51 @@ ExpressionList FunctionArgumentList(Function retval):
 }
 
 XMLSerializeExpr XMLSerializeExpr(): {
-   XMLSerializeExpr result;
+   XMLSerializeExpr result = new XMLSerializeExpr();
    Expression expression;
    List<OrderByElement> orderByElements = null;
    ColDataType dataType;
+   Token token;
 }
 {
-    <K_XMLSERIALIZE>
-        "(" <K_XMLAGG>
+    <K_XMLSERIALIZE> "("
+    (
+        LOOKAHEAD({ isKeywordAhead("CONTENT") || isKeywordAhead("DOCUMENT") })
+        token=<S_IDENTIFIER>
+        { result.setSerializationMode(XMLSerializeExpr.SerializationMode.valueOf(token.image.toUpperCase(Locale.ROOT))); }
+        expression=Expression() { result.setExpression(expression); }
+        [ <K_AS> dataType=ColDataType() { result.setDataType(dataType); } ]
+        [ <K_ENCODING> token=<S_CHAR_LITERAL> { result.setEncoding(new StringValue(token.image)); } ]
+        [ <K_VERSION> token=<S_CHAR_LITERAL> { result.setVersion(new StringValue(token.image)); } ]
+        [
+            LOOKAHEAD(2) <K_NO> token=<S_IDENTIFIER> {
+                requireDdlSyntax("INDENT".equalsIgnoreCase(token.image), "Expected INDENT after NO");
+                result.setIndent(false);
+            }
+            |
+            LOOKAHEAD({ isKeywordAhead("INDENT") }) token=<S_IDENTIFIER> { result.setIndent(true); }
+            [ <K_SIZE> "=" token=<S_LONG> { result.setIndentSize(new LongValue(token.image)); } ]
+        ]
+        [
+            <K_SHOW> <K_DEFAULTS> { result.setShowDefaults(true); }
+            |
+            LOOKAHEAD({ isKeywordAhead("HIDE") }) token=<S_IDENTIFIER> <K_DEFAULTS>
+                { result.setShowDefaults(false); }
+        ]
+        |
+        <K_XMLAGG>
                 "(" <K_XMLTEXT>
                         "(" expression=SimpleExpression() ")"
                 [ orderByElements=OrderByElements() ]
         ")"
-        <K_AS> dataType=ColDataType() ")"
-    {
-        result = new XMLSerializeExpr();
-        result.setExpression(expression);
-        result.setOrderByElements(orderByElements);
-        result.setDataType(dataType);
-        return result;
-    }
+        <K_AS> dataType=ColDataType() {
+            result.setExpression(expression);
+            result.setOrderByElements(orderByElements);
+            result.setDataType(dataType);
+        }
+    )
+    ")"
+    { return result; }
 }
 
 

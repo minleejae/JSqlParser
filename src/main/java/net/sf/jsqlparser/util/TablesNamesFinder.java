@@ -2213,7 +2213,9 @@ public class TablesNamesFinder<Void>
 
     @Override
     public <S> Void visit(XMLSerializeExpr xmlSerializeExpr, S context) {
-
+        for (Expression expression : xmlSerializeExpr.getExpressions()) {
+            expression.accept(this, context);
+        }
         return null;
     }
 

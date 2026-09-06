@@ -1653,21 +1653,8 @@ public class ExpressionDeParser extends AbstractDeParser<Expression>
 
     @Override
     public <S> StringBuilder visit(XMLSerializeExpr expr, S context) {
-        // xmlserialize(xmlagg(xmltext(COMMENT_LINE) ORDER BY COMMENT_SEQUENCE) as varchar(1024))
-        builder.append("xmlserialize(xmlagg(xmltext(");
-        expr.getExpression().accept(this, context);
-        builder.append(")");
-        if (expr.getOrderByElements() != null) {
-            builder.append(" ORDER BY ");
-            for (Iterator<OrderByElement> i = expr.getOrderByElements().iterator(); i.hasNext();) {
-                builder.append(i.next().toString());
-                if (i.hasNext()) {
-                    builder.append(", ");
-                }
-            }
-        }
-        builder.append(") AS ").append(expr.getDataType()).append(")");
-        return builder;
+        return expr.appendTo(builder, expression -> expression.accept(this, context),
+                orderBy -> new OrderByDeParser(this, builder).deParse(false, orderBy, context));
     }
 
     @Override
