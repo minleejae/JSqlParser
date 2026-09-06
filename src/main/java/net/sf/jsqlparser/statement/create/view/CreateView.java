@@ -32,6 +32,7 @@ public class CreateView implements Statement {
     private boolean secure = false;
     private TemporaryOption temp = TemporaryOption.NONE;
     private AutoRefreshOption autoRefresh = AutoRefreshOption.NONE;
+    private Boolean backup;
     private boolean withReadOnly = false;
     private boolean ifNotExists = false;
     private List<String> viewCommentOptions = null;
@@ -122,8 +123,11 @@ public class CreateView implements Statement {
         this.withData = withData;
     }
 
-    /** Checks combinations introduced by the PostgreSQL view clauses. */
+    /** Checks combinations requiring ordinary, recursive or materialized views. */
     public void validateOptions() {
+        if (backup != null && !materialized) {
+            throw new IllegalArgumentException("BACKUP requires a materialized view");
+        }
         if (recursive && (materialized || columnNames == null || columnNames.isEmpty()
                 || checkOption != null)) {
             throw new IllegalArgumentException(
@@ -220,6 +224,30 @@ public class CreateView implements Statement {
         this.autoRefresh = autoRefresh;
     }
 
+    /** Null means omitted; true and false preserve Redshift's BACKUP YES and BACKUP NO. */
+    public Boolean getBackup() {
+        return backup;
+    }
+
+    public void setBackup(Boolean backup) {
+        this.backup = backup;
+    }
+
+    public CreateView withBackup(Boolean backup) {
+        setBackup(backup);
+        return this;
+    }
+
+    /** Shared SQL rendering for options immediately following the materialized view name. */
+    public void appendMaterializationOptionsTo(StringBuilder sql) {
+        if (backup != null) {
+            sql.append(backup ? " BACKUP YES" : " BACKUP NO");
+        }
+        if (autoRefresh != AutoRefreshOption.NONE) {
+            sql.append(" AUTO REFRESH ").append(autoRefresh.name());
+        }
+    }
+
     public boolean isWithReadOnly() {
         return withReadOnly;
     }
@@ -266,9 +294,7 @@ public class CreateView implements Statement {
         if (ifNotExists && ifNotExistsAfterViewName) {
             sql.append(" IF NOT EXISTS");
         }
-        if (autoRefresh != AutoRefreshOption.NONE) {
-            sql.append(" AUTO REFRESH ").append(autoRefresh.name());
-        }
+        appendMaterializationOptionsTo(sql);
         if (columnNames != null) {
             sql.append("(");
             sql.append(columnNames);

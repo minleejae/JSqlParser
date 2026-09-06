@@ -12907,6 +12907,8 @@ CreateView CreateView(boolean isUsingOrReplace):
     <K_VIEW>
     [ LOOKAHEAD(3) <K_IF> <K_NOT> <K_EXISTS> { createView.setIfNotExists(true); } ]
     view=Table() { createView.setView(view); }
+    [ LOOKAHEAD({ isKeywordAhead("BACKUP") }) tk=<S_IDENTIFIER>
+        (tk=<K_YES> | tk=<K_NO>) { createView.setBackup(tk.kind == K_YES); } ]
     [LOOKAHEAD(3) <K_AUTO> <K_REFRESH> (tk=<K_YES> | tk=<K_NO>) { createView.setAutoRefresh(AutoRefreshOption.from(tk.image)); } ]
     [LOOKAHEAD(3) <K_IF> <K_NOT> <K_EXISTS> {
         createView.setIfNotExists(true);
