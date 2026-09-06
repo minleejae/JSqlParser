@@ -408,13 +408,11 @@ public class StatementDeParser extends AbstractDeParser<Statement>
 
     @Override
     public <S> StringBuilder visit(ExplainStatement explainStatement, S context) {
-        builder.append(explainStatement.getKeyword()).append(" ");
+        builder.append(explainStatement.getKeyword());
         if (explainStatement.getTable() != null) {
-            builder.append(explainStatement.getTable());
-        } else if (explainStatement.getOptions() != null) {
-            builder.append(explainStatement.getOptions().values().stream()
-                    .map(ExplainStatement.Option::formatOption).collect(Collectors.joining(" ")));
-            builder.append(" ");
+            builder.append(" ").append(explainStatement.getTable());
+        } else {
+            explainStatement.appendOptionsTo(builder).append(" ");
         }
         if (explainStatement.getStatement() != null) {
             explainStatement.getStatement().accept(this, context);

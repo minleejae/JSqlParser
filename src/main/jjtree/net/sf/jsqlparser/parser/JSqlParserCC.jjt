@@ -1305,6 +1305,51 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         return Dialect.MYSQL.name().equals(dialect) || Dialect.MARIADB.name().equals(dialect);
     }
 
+    private ExplainStatement.OptionType postgresqlExplainOptionType(String name) throws ParseException {
+        try {
+            return ExplainStatement.OptionType.from(name);
+        } catch (IllegalArgumentException ex) {
+            throw new ParseException("Unknown PostgreSQL EXPLAIN option: " + name);
+        }
+    }
+
+    private void validatePostgresqlExplain(ExplainStatement explain) throws ParseException {
+        if (explain.getTable() != null) {
+            throw new ParseException("PostgreSQL EXPLAIN requires a statement");
+        }
+        int previous = -1;
+        for (ExplainStatement.Option option : explain.getOptionList()) {
+            ExplainStatement.OptionType type = option.getType();
+            String value = option.getValue();
+            if (!explain.isParenthesizedOptions()) {
+                int position = type == ExplainStatement.OptionType.ANALYZE ? 0
+                        : type == ExplainStatement.OptionType.VERBOSE ? 1 : -1;
+                if (position <= previous || value != null) {
+                    throw new ParseException("PostgreSQL EXPLAIN options require parentheses");
+                }
+                previous = position;
+            } else {
+                boolean valid;
+                switch (type) {
+                    case FORMAT:
+                        valid = value != null && value.matches("(?i)TEXT|XML|JSON|YAML");
+                        break;
+                    case SERIALIZE:
+                        valid = value == null || value.matches("(?i)NONE|TEXT|BINARY");
+                        break;
+                    case PLAN: case PLAN_FOR:
+                        valid = false;
+                        break;
+                    default:
+                        valid = value == null || value.matches("(?i)TRUE|FALSE|ON|OFF|0|1");
+                }
+                if (!valid) {
+                    throw new ParseException("Invalid PostgreSQL EXPLAIN option: " + option.formatOption());
+                }
+            }
+        }
+    }
+
     private void requireDdlSyntax(boolean valid, String message) throws ParseException {
         if (!valid) {
             throw new ParseException(message);
@@ -3872,12 +3917,16 @@ ExplainStatement Explain():
     Table table;
     List<ExplainStatement.Option> options;
     ExplainStatement es;
+    boolean parenthesized = false;
 }
 {
     ( tk=<K_EXPLAIN> | tk = <K_SUMMARIZE> )
     (
         LOOKAHEAD(3)(
-            options= ExplainStatementOptions()
+            (
+                LOOKAHEAD(2) "(" options = PostgresqlExplainOptions() ")" { parenthesized = true; }
+                | options = ExplainStatementOptions()
+            )
             (
                 [ LOOKAHEAD(2) with=WithList() ]
                 (
@@ -3890,6 +3939,7 @@ ExplainStatement Explain():
             )
             {
                 es = new ExplainStatement(tk.image, statement, options);
+                es.setParenthesizedOptions(parenthesized);
             }
         )
         |
@@ -3898,35 +3948,65 @@ ExplainStatement Explain():
         )
     )
     {
+        if (parenthesized || Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect))) {
+            validatePostgresqlExplain(es);
+        }
         return es;
     }
 }
 
+List<ExplainStatement.Option> PostgresqlExplainOptions():
+{
+    List<ExplainStatement.Option> options = new ArrayList<ExplainStatement.Option>();
+    ExplainStatement.Option option;
+}
+{
+    option = PostgresqlExplainOption() { options.add(option); }
+    ( "," option = PostgresqlExplainOption() { options.add(option); } )*
+    { return options; }
+}
+
+ExplainStatement.Option PostgresqlExplainOption():
+{
+    Token name;
+    Token value = null;
+}
+{
+    ( name = <K_ANALYZE> | name = <K_VERBOSE> | name = <K_COSTS>
+      | name = <K_BUFFERS> | name = <K_FORMAT> | name = <K_SETTINGS>
+      | name = <S_IDENTIFIER> )
+    [ ( value = <K_TRUE> | value = <K_FALSE> | value = <K_ON> | value = <K_OFF>
+      | value = <K_XML> | value = <K_JSON> | value = <K_YAML> | value = <K_TEXT_LITERAL>
+      | value = <K_NONE> | value = <K_BINARY> | value = <S_LONG> | value = <S_IDENTIFIER> ) ]
+    {
+        return new ExplainStatement.Option(postgresqlExplainOptionType(name.image))
+                .withValue(value == null ? null : value.image);
+    }
+}
+
 /**
- * Postgres supports TRUE,ON,1,FALSE,OFF,0 as values
+ * Boolean values in the legacy unparenthesized syntax.
  */
 String ExplainOptionBoolean():
 {
   Token tk = null;
 }
 {
-   // intentionally not supporting 0,1 at the moment
-   [( tk=<K_TRUE> | tk=<K_FALSE> | tk=<K_ON> | tk=<K_OFF> )] // optional
+   [( tk=<K_TRUE> | tk=<K_FALSE> | tk=<K_ON> | tk=<K_OFF> )]
    {
     return tk != null ? tk.image : null;
    }
 }
 
 /**
- * The output format, which can be TEXT, XML, JSON, or YAML
+ * Preserve the optional format in the legacy unparenthesized syntax.
  */
 String ExplainFormatOption():
 {
   Token tk = null;
 }
 {
-   // TODO support Text
-   [( tk=<K_XML> | tk=<K_JSON> | tk=<K_YAML> )] // optional
+   [( tk=<K_XML> | tk=<K_JSON> | tk=<K_YAML> )]
    {
     return tk != null ? tk.image : null;
    }
