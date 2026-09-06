@@ -9,6 +9,13 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
+import net.sf.jsqlparser.statement.create.type.CreateType;
+import net.sf.jsqlparser.statement.alter.AlterType;
+import net.sf.jsqlparser.statement.create.domain.CreateDomain;
+import net.sf.jsqlparser.statement.alter.AlterDomain;
+import net.sf.jsqlparser.statement.create.extension.CreateExtension;
+import net.sf.jsqlparser.statement.alter.AlterExtension;
+
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -559,6 +566,42 @@ public class StatementDeParser extends AbstractDeParser<Statement>
     @Override
     public <S> StringBuilder visit(CreatePolicy createPolicy, S context) {
         new CreatePolicyDeParser(expressionDeParser, builder).deParse(createPolicy);
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(CreateType statement, S context) {
+        builder.append(statement);
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(AlterType statement, S context) {
+        builder.append(statement);
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(CreateDomain statement, S context) {
+        statement.appendTo(builder, expression -> expression.accept(expressionDeParser, context));
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(AlterDomain statement, S context) {
+        statement.appendTo(builder, expression -> expression.accept(expressionDeParser, context));
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(CreateExtension statement, S context) {
+        builder.append(statement);
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(AlterExtension statement, S context) {
+        builder.append(statement);
         return builder;
     }
 }

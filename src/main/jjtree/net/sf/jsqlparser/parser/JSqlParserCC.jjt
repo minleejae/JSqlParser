@@ -48,6 +48,9 @@ import net.sf.jsqlparser.statement.alter.*;
 import net.sf.jsqlparser.statement.alter.sequence.*;
 import net.sf.jsqlparser.statement.comment.*;
 import net.sf.jsqlparser.statement.create.database.*;
+import net.sf.jsqlparser.statement.create.type.*;
+import net.sf.jsqlparser.statement.create.domain.*;
+import net.sf.jsqlparser.statement.create.extension.*;
 import net.sf.jsqlparser.statement.create.event.*;
 import net.sf.jsqlparser.statement.create.function.*;
 import net.sf.jsqlparser.statement.create.index.*;
@@ -1198,6 +1201,15 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         }
 
         return false;
+    }
+
+    private static void requireTypeDdlSyntax(boolean valid, String message) throws ParseException {
+        if (!valid) { throw new ParseException(message); }
+    }
+
+    private static <E extends Enum<E>> E typeDdlEnum(Class<E> type, String value) throws ParseException {
+        try { return Enum.valueOf(type, value.toUpperCase(Locale.ROOT)); }
+        catch (IllegalArgumentException exception) { throw new ParseException("Unknown " + type.getSimpleName() + ": " + value); }
     }
 
     private boolean isKeywordAhead(String keyword) {
@@ -14858,6 +14870,12 @@ Statement Alter():
         (
             <K_ALTER>
             (
+                LOOKAHEAD(<K_TYPE>) statement = AlterType()
+                |
+                LOOKAHEAD(<K_DOMAIN>) statement = AlterDomain()
+                |
+                LOOKAHEAD({ isKeywordAhead("EXTENSION") }) statement = AlterExtension()
+                |
                 statement = AlterEvent()
                 |
                 statement = AlterTable()
@@ -15348,6 +15366,12 @@ Statement Create():
 {
     <K_CREATE> [ <K_OR> <K_REPLACE> { isUsingOrReplace = true; } ]
     (
+        LOOKAHEAD(<K_TYPE>) { requireTypeDdlSyntax(!isUsingOrReplace, "OR REPLACE is not supported for CREATE TYPE"); } statement = CreateType()
+        |
+        LOOKAHEAD(<K_DOMAIN>) { requireTypeDdlSyntax(!isUsingOrReplace, "OR REPLACE is not supported for CREATE DOMAIN"); } statement = CreateDomain()
+        |
+        LOOKAHEAD({ isKeywordAhead("EXTENSION") }) { requireTypeDdlSyntax(!isUsingOrReplace, "OR REPLACE is not supported for CREATE EXTENSION"); } statement = CreateExtension()
+        |
         statement = CreateUser()
         |
         statement = CreateEvent()
@@ -15371,12 +15395,6 @@ Statement Create():
         LOOKAHEAD(2) statement = CreateView(isUsingOrReplace)
         |
         statement = CreatePolicy()
-        |
-        // @fixme: must appear before INDEX or it will collide with INDEX's CreateParameter() production
-        tk=<K_DOMAIN> captureRest = captureRest()
-        {
-            statement = new UnsupportedStatement("CREATE " + tk.image, captureRest);
-        }
         |
         /* @fixme
          *  Create Index uses CreateParameter() which allows all kind of tokens
@@ -15450,6 +15468,340 @@ Synonym Synonym() #Synonym :
 		linkAST(synonym,jjtThis);
         return synonym;
     }
+}
+
+
+String TypeDdlName():
+{ String name; String part; Token keyword; }
+{
+    ( name=RelObjectName() | keyword=<K_SETTINGS> { name = keyword.image; } )
+    ( LOOKAHEAD(2) "." ( part=RelObjectNameExt() | keyword=<K_SETTINGS> { part = keyword.image; } )
+      { name += "." + part; } )*
+    { return name; }
+}
+
+void TypeDdlKeyword(String expected):
+{ Token keyword; }
+{ ( keyword=<S_IDENTIFIER> | keyword=<DATA_TYPE> ) { requireTypeDdlSyntax(expected.equalsIgnoreCase(keyword.image), "Expected " + expected); } }
+
+Expression ExtensionVersion():
+{ Token token; String name; Expression result; }
+{
+    ( token=<S_CHAR_LITERAL> { result = new StringValue(token.image); }
+      | name=RelObjectName() { result = new Column(name); } )
+    { return result; }
+}
+
+TypeAttribute TypeAttribute():
+{ TypeAttribute attribute = new TypeAttribute(); String name; ColDataType type; }
+{
+    name=RelObjectName() { attribute.setName(name); }
+    type=ColDataType() { attribute.setDataType(type); }
+    [ <K_COLLATE> name=TypeDdlName() { attribute.setCollation(name); } ]
+    { return attribute; }
+}
+
+CreateType CreateType():
+{
+    CreateType result = new CreateType();
+    String name; Token label; TypeAttribute attribute;
+    EnumTypeDefinition enumeration = new EnumTypeDefinition();
+    CompositeTypeDefinition composite = new CompositeTypeDefinition();
+    RangeTypeDefinition range = new RangeTypeDefinition();
+    RangeTypeDefinition.Option option;
+}
+{
+    <K_TYPE> name=TypeDdlName() { result.setName(name); }
+    [
+        <K_AS>
+        (
+            LOOKAHEAD({ isKeywordAhead("ENUM") }) TypeDdlKeyword("ENUM") "("
+            [ label=<S_CHAR_LITERAL> { enumeration.getLabels().add(new StringValue(label.image)); }
+              ( "," label=<S_CHAR_LITERAL> { enumeration.getLabels().add(new StringValue(label.image)); } )* ]
+            ")" { result.setDefinition(enumeration); }
+            | <K_RANGE> "(" option=RangeTypeOption() { range.getOptions().add(option); }
+              ( "," option=RangeTypeOption() { range.getOptions().add(option); } )* ")"
+              {
+                  requireTypeDdlSyntax(range.getSubtype() != null, "A range definition requires SUBTYPE");
+                  result.setDefinition(range);
+              }
+            | "(" [ attribute=TypeAttribute() { composite.getAttributes().add(attribute); }
+                    ( "," attribute=TypeAttribute() { composite.getAttributes().add(attribute); } )* ]
+              ")" { result.setDefinition(composite); }
+        )
+    ]
+    { return result; }
+}
+
+RangeTypeDefinition.Option RangeTypeOption():
+{ String name; RangeTypeDefinition.OptionKind kind; ColDataType type; }
+{
+    name=RelObjectName() "=" { kind = typeDdlEnum(RangeTypeDefinition.OptionKind.class, name); }
+    (
+        LOOKAHEAD({ kind == RangeTypeDefinition.OptionKind.SUBTYPE })
+        type=ColDataType() { return new RangeTypeDefinition.Option(type); }
+        | name=TypeDdlName() { return new RangeTypeDefinition.Option(kind, name); }
+    )
+}
+
+AlterType.Behavior TypeAlterBehavior():
+{ AlterType.Behavior result; }
+{
+    ( <K_CASCADE> { result = AlterType.Behavior.CASCADE; }
+      | <K_RESTRICT> { result = AlterType.Behavior.RESTRICT; } )
+    { return result; }
+}
+
+AlterType.AttributeChange TypeAttributeChange():
+{
+    AlterType.AttributeChange result = new AlterType.AttributeChange();
+    TypeAttribute attribute = new TypeAttribute();
+    String name; ColDataType type; AlterType.Behavior behavior;
+}
+{
+    (
+        <K_ADD> TypeDdlKeyword("ATTRIBUTE") attribute=TypeAttribute()
+        { result.setKind(AlterType.AttributeChange.Kind.ADD); }
+        | <K_DROP> TypeDdlKeyword("ATTRIBUTE") [ LOOKAHEAD(2) <K_IF> <K_EXISTS> { result.setIfExists(true); } ]
+          name=RelObjectName() { attribute.setName(name); result.setKind(AlterType.AttributeChange.Kind.DROP); }
+        | <K_ALTER> TypeDdlKeyword("ATTRIBUTE") name=RelObjectName() { attribute.setName(name); }
+          [ <K_SET> <K_DATA> { result.setUseSetData(true); } ] <K_TYPE>
+          type=ColDataType() { attribute.setDataType(type); result.setKind(AlterType.AttributeChange.Kind.ALTER); }
+          [ <K_COLLATE> name=TypeDdlName() { attribute.setCollation(name); } ]
+    )
+    [ behavior=TypeAlterBehavior() { result.setBehavior(behavior); } ]
+    { result.setAttribute(attribute); return result; }
+}
+
+AlterType AlterType():
+{
+    AlterType result = new AlterType(); String name; Token label;
+    AlterType.AttributeChange change; AlterType.Behavior behavior;
+}
+{
+    <K_TYPE> name=TypeDdlName() { result.setName(name); }
+    (
+        LOOKAHEAD(<K_ADD> <K_VALUE>)
+        <K_ADD> <K_VALUE> { result.setAction(AlterType.Action.ADD_VALUE); }
+        [ <K_IF> <K_NOT> <K_EXISTS> { result.setIfNotExists(true); } ]
+        label=<S_CHAR_LITERAL> { result.setValue(new StringValue(label.image)); }
+        [ ( <K_BEFORE> { result.setPosition(AlterType.Position.BEFORE); }
+            | TypeDdlKeyword("AFTER") { result.setPosition(AlterType.Position.AFTER); } )
+          label=<S_CHAR_LITERAL> { result.setNeighborValue(new StringValue(label.image)); } ]
+        | <K_RENAME>
+          (
+              <K_VALUE> label=<S_CHAR_LITERAL> { result.setValue(new StringValue(label.image)); }
+              <K_TO> label=<S_CHAR_LITERAL> { result.setNewValue(new StringValue(label.image)); result.setAction(AlterType.Action.RENAME_VALUE); }
+              | LOOKAHEAD({ isKeywordAhead("ATTRIBUTE") }) TypeDdlKeyword("ATTRIBUTE")
+                name=RelObjectName() { result.setAttributeName(name); }
+                <K_TO> name=RelObjectName() { result.setNewName(name); result.setAction(AlterType.Action.RENAME_ATTRIBUTE); }
+                [ behavior=TypeAlterBehavior() { result.setBehavior(behavior); } ]
+              | <K_TO> name=RelObjectName() { result.setNewName(name); result.setAction(AlterType.Action.RENAME); }
+          )
+        | <K_SET> <K_SCHEMA> name=RelObjectName() { result.setNewName(name); result.setAction(AlterType.Action.SET_SCHEMA); }
+        | LOOKAHEAD({ isKeywordAhead("OWNER") }) TypeDdlKeyword("OWNER") <K_TO>
+          name=RelObjectName() { result.setNewName(name); result.setAction(AlterType.Action.OWNER); }
+        | change=TypeAttributeChange() { result.setAction(AlterType.Action.ATTRIBUTES); result.getAttributeChanges().add(change); }
+          ( "," change=TypeAttributeChange() { result.getAttributeChanges().add(change); } )*
+    )
+    { return result; }
+}
+
+DomainConstraint DomainConstraint(boolean allowNull):
+{ DomainConstraint result = new DomainConstraint(); String name; Expression expression; }
+{
+    [ <K_CONSTRAINT> name=RelObjectName() { result.setName(name); } ]
+    (
+        <K_NOT> <K_NULL> { result.setKind(DomainConstraint.Kind.NOT_NULL); }
+        | <K_NULL> { requireTypeDdlSyntax(allowNull, "ALTER DOMAIN ADD does not accept NULL"); result.setKind(DomainConstraint.Kind.NULL); }
+        | <K_CHECK> "(" expression=Expression() ")"
+          { result.setKind(DomainConstraint.Kind.CHECK); result.setExpression(expression); }
+    )
+    { return result; }
+}
+
+CreateDomain CreateDomain():
+{ CreateDomain result = new CreateDomain(); String name; ColDataType type; Expression expression; DomainConstraint constraint; }
+{
+    <K_DOMAIN> name=TypeDdlName() { result.setName(name); }
+    [ <K_AS> { result.setUseAs(true); } ] type=ColDataType() { result.setDataType(type); }
+    [ <K_COLLATE> name=TypeDdlName() { result.setCollation(name); } ]
+    [ <K_DEFAULT> expression=Expression() { result.setDefaultExpression(expression); } ]
+    ( constraint=DomainConstraint(true) { result.getConstraints().add(constraint); } )*
+    { return result; }
+}
+
+AlterDomain AlterDomain():
+{ AlterDomain result = new AlterDomain(); String name; Expression expression; DomainConstraint constraint; }
+{
+    <K_DOMAIN> name=TypeDdlName() { result.setName(name); }
+    (
+        <K_SET>
+        (
+            <K_DEFAULT> expression=Expression() { result.setAction(AlterDomain.Action.SET_DEFAULT); result.setDefaultExpression(expression); }
+            | <K_NOT> <K_NULL> { result.setAction(AlterDomain.Action.SET_NOT_NULL); }
+            | <K_SCHEMA> name=RelObjectName() { result.setAction(AlterDomain.Action.SET_SCHEMA); result.setNewName(name); }
+        )
+        | <K_DROP>
+        (
+            <K_DEFAULT> { result.setAction(AlterDomain.Action.DROP_DEFAULT); }
+            | <K_NOT> <K_NULL> { result.setAction(AlterDomain.Action.DROP_NOT_NULL); }
+            | <K_CONSTRAINT> [ LOOKAHEAD(2) <K_IF> <K_EXISTS> { result.setIfExists(true); } ]
+              name=RelObjectName() { result.setAction(AlterDomain.Action.DROP_CONSTRAINT); result.setConstraintName(name); }
+              [ <K_CASCADE> { result.setBehavior(AlterDomain.Behavior.CASCADE); }
+                | <K_RESTRICT> { result.setBehavior(AlterDomain.Behavior.RESTRICT); } ]
+        )
+        | <K_ADD> constraint=DomainConstraint(false) { result.setAction(AlterDomain.Action.ADD_CONSTRAINT); result.setConstraint(constraint); }
+          [ <K_NOT> TypeDdlKeyword("VALID") {
+              requireTypeDdlSyntax(constraint.getKind() == DomainConstraint.Kind.CHECK, "NOT VALID requires a CHECK constraint");
+              result.setNotValid(true);
+          } ]
+        | <K_RENAME>
+          (
+              <K_CONSTRAINT> name=RelObjectName() { result.setConstraintName(name); }
+              <K_TO> name=RelObjectName() { result.setNewName(name); result.setAction(AlterDomain.Action.RENAME_CONSTRAINT); }
+              | <K_TO> name=RelObjectName() { result.setNewName(name); result.setAction(AlterDomain.Action.RENAME); }
+          )
+        | <K_VALIDATE> <K_CONSTRAINT>
+          name=RelObjectName() { result.setConstraintName(name); result.setAction(AlterDomain.Action.VALIDATE_CONSTRAINT); }
+        | LOOKAHEAD({ isKeywordAhead("OWNER") }) TypeDdlKeyword("OWNER") <K_TO>
+          name=RelObjectName() { result.setNewName(name); result.setAction(AlterDomain.Action.OWNER); }
+    )
+    { return result; }
+}
+
+CreateExtension CreateExtension():
+{ CreateExtension result = new CreateExtension(); String name; Expression version; }
+{
+    TypeDdlKeyword("EXTENSION")
+    [ LOOKAHEAD(3) <K_IF> <K_NOT> <K_EXISTS> { result.setIfNotExists(true); } ]
+    name=RelObjectName() { result.setName(name); }
+    [ LOOKAHEAD(1) <K_WITH> { result.setUseWith(true); } ]
+    (
+        <K_SCHEMA> name=RelObjectName() { result.getOptions().add(new CreateExtension.Option(CreateExtension.OptionKind.SCHEMA, name, null)); }
+        | <K_VERSION> version=ExtensionVersion() { result.getOptions().add(new CreateExtension.Option(CreateExtension.OptionKind.VERSION, null, version)); }
+        | <K_CASCADE> { result.getOptions().add(new CreateExtension.Option(CreateExtension.OptionKind.CASCADE, null, null)); }
+    )*
+    { return result; }
+}
+
+RoutineReference.Argument RoutineSignatureArgument():
+{ RoutineReference.Argument result = new RoutineReference.Argument(); String name; Token mode; ColDataType type; }
+{
+    [
+        LOOKAHEAD({ isKeywordAhead("IN") || isKeywordAhead("OUT") || isKeywordAhead("INOUT") || isKeywordAhead("VARIADIC") })
+        ( <K_IN> { result.setMode(RoutineReference.Argument.Mode.IN); }
+          | mode=<S_IDENTIFIER> { result.setMode(typeDdlEnum(RoutineReference.Argument.Mode.class, mode.image)); } )
+    ]
+    (
+        LOOKAHEAD(ColDataType() ("," | ")" | <K_ORDER>)) type=ColDataType()
+        | name=RelObjectName() { result.setName(name); } type=ColDataType()
+    )
+    { result.setDataType(type); return result; }
+}
+
+RoutineReference RoutineReference(boolean aggregate):
+{
+    RoutineReference result = new RoutineReference(); String name; RoutineReference.Argument argument;
+    List<RoutineReference.Argument> arguments; List<RoutineReference.Argument> orderBy;
+}
+{
+    name=TypeDdlName() { result.setName(name); }
+    [
+        LOOKAHEAD(1)
+        "(" { arguments = new ArrayList<RoutineReference.Argument>(); result.setArguments(arguments); }
+        (
+            "*" { requireTypeDdlSyntax(aggregate, "Only aggregate signatures accept *"); result.setAllArguments(true); }
+            |
+            [ argument=RoutineSignatureArgument() { arguments.add(argument); }
+              ( "," argument=RoutineSignatureArgument() { arguments.add(argument); } )* ]
+            [ <K_ORDER> <K_BY> { requireTypeDdlSyntax(aggregate, "ORDER BY requires an aggregate signature"); orderBy = new ArrayList<RoutineReference.Argument>(); }
+              argument=RoutineSignatureArgument() { orderBy.add(argument); }
+              ( "," argument=RoutineSignatureArgument() { orderBy.add(argument); } )*
+              { result.setOrderByArguments(orderBy); } ]
+        )
+        ")"
+    ]
+    { requireTypeDdlSyntax(!aggregate || result.getArguments() != null, "An aggregate signature is required"); return result; }
+}
+
+String ExtensionOperatorName():
+{ String schema = null; String operator = ""; Token token; }
+{
+    [ LOOKAHEAD(RelObjectName() ".") schema=RelObjectName() "." ]
+    ( token="+" | token="-" | token="*" | token="/" | token="%" | token="="
+      | token=<OP_NOTEQUALSSTANDARD> | token=<OP_NOTEQUALSBANG> | token="<" | token=">"
+      | token=<OP_MINORTHANEQUALS> | token=<OP_GREATERTHANEQUALS> | token="&&" | token="@>" | token="<@" | token="~"
+      | token="~*" | token="!~" | token="!~*" | token="?" | token="?|" | token="?&"
+      | token=<OP_CONCAT> )
+    { operator = token.image; return (schema == null ? "" : schema + ".") + operator; }
+}
+
+ColDataType ExtensionOperatorType():
+{ ColDataType type = null; }
+{ ( <K_NONE> | type=ColDataType() ) { return type; } }
+
+ExtensionObject ExtensionObject():
+{
+    ExtensionObject result = new ExtensionObject(); String name; String kind;
+    RoutineReference routine; ColDataType type;
+}
+{
+    (
+        LOOKAHEAD({ isKeywordAhead("FUNCTION") || isKeywordAhead("PROCEDURE") || isKeywordAhead("ROUTINE") || isKeywordAhead("AGGREGATE") })
+        ( LOOKAHEAD(1) <K_PROCEDURE> { kind = "PROCEDURE"; } | kind=RelObjectName() )
+        routine=RoutineReference("AGGREGATE".equalsIgnoreCase(kind))
+        { result.setKind(typeDdlEnum(ExtensionObject.Kind.class, kind)); result.setRoutine(routine); }
+        | LOOKAHEAD({ isKeywordAhead("CAST") }) <K_CAST> "("
+          type=ColDataType() { result.setSourceType(type); } <K_AS>
+          type=ColDataType() { result.setTargetType(type); } ")" { result.setKind(ExtensionObject.Kind.CAST); }
+        | LOOKAHEAD({ isKeywordAhead("OPERATOR") && !"CLASS".equalsIgnoreCase(getToken(2).image) && !"FAMILY".equalsIgnoreCase(getToken(2).image) })
+          TypeDdlKeyword("OPERATOR") name=ExtensionOperatorName() "("
+          type=ExtensionOperatorType() { result.setSourceType(type); } ","
+          type=ExtensionOperatorType() { result.setTargetType(type); } ")"
+          { result.setKind(ExtensionObject.Kind.OPERATOR); result.setName(name); }
+        | LOOKAHEAD({ isKeywordAhead("TRANSFORM") }) TypeDdlKeyword("TRANSFORM") <K_FOR>
+          type=ColDataType() { result.setSourceType(type); } TypeDdlKeyword("LANGUAGE")
+          name=RelObjectName() { result.setLanguage(name); result.setKind(ExtensionObject.Kind.TRANSFORM); }
+        |
+        (
+            <K_FOREIGN>
+            ( <K_TABLE> { kind = "FOREIGN_TABLE"; }
+              | <K_DATA> TypeDdlKeyword("WRAPPER") { kind = "FOREIGN_DATA_WRAPPER"; } )
+            | LOOKAHEAD(2) <K_MATERIALIZED> <K_VIEW> { kind = "MATERIALIZED_VIEW"; }
+            | LOOKAHEAD({ isKeywordAhead("TEXT") }) <K_TEXT_LITERAL> <K_SEARCH>
+              name=RelObjectName() { kind = "TEXT_SEARCH_" + name; }
+            | LOOKAHEAD({ isKeywordAhead("EVENT") }) <K_EVENT> <K_TRIGGER> { kind = "EVENT_TRIGGER"; }
+            | LOOKAHEAD({ isKeywordAhead("ACCESS") }) TypeDdlKeyword("ACCESS") TypeDdlKeyword("METHOD") { kind = "ACCESS_METHOD"; }
+            | LOOKAHEAD({ isKeywordAhead("OPERATOR") }) TypeDdlKeyword("OPERATOR")
+              name=RelObjectName() { kind = "OPERATOR_" + name; }
+            | LOOKAHEAD({ isKeywordAhead("PROCEDURAL") }) TypeDdlKeyword("PROCEDURAL") TypeDdlKeyword("LANGUAGE")
+              { result.setProcedural(true); kind = "LANGUAGE"; }
+            | kind=RelObjectName()
+        )
+        { result.setKind(typeDdlEnum(ExtensionObject.Kind.class, kind)); }
+        name=TypeDdlName() { result.setName(name); }
+        [ <K_USING> name=RelObjectName() { result.setAccessMethod(name); } ]
+    )
+    {
+        requireTypeDdlSyntax((result.getKind() == ExtensionObject.Kind.OPERATOR_CLASS || result.getKind() == ExtensionObject.Kind.OPERATOR_FAMILY)
+                == (result.getAccessMethod() != null), "USING is required only for operator classes and families");
+        return result;
+    }
+}
+
+AlterExtension AlterExtension():
+{ AlterExtension result = new AlterExtension(); String name; Expression version; ExtensionObject member; }
+{
+    TypeDdlKeyword("EXTENSION") name=RelObjectName() { result.setName(name); }
+    (
+        <K_UPDATE> { result.setAction(AlterExtension.Action.UPDATE); }
+        [ <K_TO> version=ExtensionVersion() { result.setVersion(version); } ]
+        | <K_SET> <K_SCHEMA> name=RelObjectName() { result.setAction(AlterExtension.Action.SET_SCHEMA); result.setSchema(name); }
+        | ( <K_ADD> { result.setAction(AlterExtension.Action.ADD); } | <K_DROP> { result.setAction(AlterExtension.Action.DROP); } )
+          member=ExtensionObject() { result.setMember(member); }
+    )
+    { return result; }
 }
 
 CreatePolicy CreatePolicy() #CreatePolicy:

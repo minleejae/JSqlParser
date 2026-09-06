@@ -9,6 +9,15 @@
  */
 package net.sf.jsqlparser.util.validation.validator;
 
+import net.sf.jsqlparser.schema.Table;
+
+import net.sf.jsqlparser.statement.create.type.CreateType;
+import net.sf.jsqlparser.statement.alter.AlterType;
+import net.sf.jsqlparser.statement.create.domain.CreateDomain;
+import net.sf.jsqlparser.statement.alter.AlterDomain;
+import net.sf.jsqlparser.statement.create.extension.CreateExtension;
+import net.sf.jsqlparser.statement.alter.AlterExtension;
+
 import net.sf.jsqlparser.parser.feature.Feature;
 import net.sf.jsqlparser.statement.Block;
 import net.sf.jsqlparser.statement.Commit;
@@ -658,5 +667,55 @@ public class StatementValidator extends AbstractValidator<Statement>
 
     public void visit(CreatePolicy createPolicy) {
         visit(createPolicy, null);
+    }
+
+    @Override
+    public <S> Void visit(CreateType statement, S context) {
+        validateFeature(Feature.createType);
+
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterType statement, S context) {
+        validateFeature(Feature.alterType);
+
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(CreateDomain statement, S context) {
+        validateFeature(Feature.createDomain);
+        validateOptionalExpression(statement.getDefaultExpression());
+        statement.getConstraints()
+                .forEach(constraint -> validateOptionalExpression(constraint.getExpression()));
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterDomain statement, S context) {
+        validateFeature(Feature.alterDomain);
+        validateOptionalExpression(statement.getDefaultExpression());
+        if (statement.getConstraint() != null) {
+            validateOptionalExpression(statement.getConstraint().getExpression());
+        }
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(CreateExtension statement, S context) {
+        validateFeature(Feature.createExtension);
+
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterExtension statement, S context) {
+        validateFeature(Feature.alterExtension);
+        if (statement.getMember() != null && statement.getMember().isTable()) {
+            validateOptionalFromItem(
+                    new Table(statement.getMember().getName()));
+        }
+        return null;
     }
 }

@@ -560,6 +560,10 @@ public enum Feature {
      */
     createSequence,
     /**
+     * Structured type, domain and extension statements.
+     */
+    createType, alterType, createDomain, alterDomain, createExtension, alterExtension,
+    /**
      * SQL "CREATE SYNONYM" statement is allowed
      *
      * @see CreateSynonym
