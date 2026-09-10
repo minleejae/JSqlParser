@@ -138,10 +138,10 @@ and missing syntax gets added on demand — [open an issue](https://github.com/J
 |  | Statements |
 |---|---|
 | **Queries** | `SELECT` · `WITH …` · Piped SQL |
+| **ksqlDB windows** | JOIN `WITHIN`, window `GRACE PERIOD`, and `EMIT CHANGES`/`FINAL` |
 | **DML** | `INSERT` · `UPDATE` · `UPSERT` · `MERGE` · `DELETE` · `TRUNCATE TABLE` |
 | **DDL** | `CREATE …` · `ALTER …` · `DROP …` |
 | **PostgreSQL RLS** | `CREATE POLICY` · `ALTER TABLE … ENABLE`/`DISABLE`/`FORCE`/`NO FORCE ROW LEVEL SECURITY` |
-| **ksqlDB windows** | JOIN `WITHIN`, window `GRACE PERIOD`, and `EMIT CHANGES`/`FINAL` |
 | **Salesforce SOQL** | `INCLUDES` · `EXCLUDES` |
 
 Beyond statement shapes, the grammar handles nested sub-selects, bind parameters (`?`,
