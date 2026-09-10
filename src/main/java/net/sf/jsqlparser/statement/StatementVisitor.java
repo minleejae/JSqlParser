@@ -13,6 +13,12 @@ import net.sf.jsqlparser.statement.role.CreateRole;
 import net.sf.jsqlparser.statement.role.AlterRole;
 import net.sf.jsqlparser.statement.grant.Revoke;
 import net.sf.jsqlparser.statement.grant.AlterDefaultPrivileges;
+import net.sf.jsqlparser.statement.create.type.CreateType;
+import net.sf.jsqlparser.statement.alter.AlterType;
+import net.sf.jsqlparser.statement.create.domain.CreateDomain;
+import net.sf.jsqlparser.statement.alter.AlterDomain;
+import net.sf.jsqlparser.statement.create.extension.CreateExtension;
+import net.sf.jsqlparser.statement.alter.AlterExtension;
 
 import net.sf.jsqlparser.statement.alter.Alter;
 import net.sf.jsqlparser.statement.alter.AlterSession;
@@ -428,6 +434,54 @@ public interface StatementVisitor<T> {
     }
 
     default void visit(AlterDefaultPrivileges statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(CreateType statement, S context) {
+        return null;
+    }
+
+    default void visit(CreateType statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(AlterType statement, S context) {
+        return null;
+    }
+
+    default void visit(AlterType statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(CreateDomain statement, S context) {
+        return null;
+    }
+
+    default void visit(CreateDomain statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(AlterDomain statement, S context) {
+        return null;
+    }
+
+    default void visit(AlterDomain statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(CreateExtension statement, S context) {
+        return null;
+    }
+
+    default void visit(CreateExtension statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(AlterExtension statement, S context) {
+        return null;
+    }
+
+    default void visit(AlterExtension statement) {
         visit(statement, null);
     }
 }

@@ -24,7 +24,7 @@ import net.sf.jsqlparser.statement.select.PlainSelect;
 public class Index implements TableElement, Serializable {
 
     public enum Kind {
-        PRIMARY_KEY, UNIQUE, INDEX, FULLTEXT, SPATIAL, FOREIGN_KEY, CHECK, EXCLUDE, OTHER
+        PRIMARY_KEY, UNIQUE, INDEX, FULLTEXT, SPATIAL, FOREIGN_KEY, CHECK, EXCLUDE, DEFAULT, OTHER
     }
 
     private final List<String> name = new ArrayList<>();
@@ -196,6 +196,8 @@ public class Index implements TableElement, Serializable {
                 kind = Kind.CHECK;
             } else if (normalized.startsWith("EXCLUDE")) {
                 kind = Kind.EXCLUDE;
+            } else if (normalized.equals("DEFAULT")) {
+                kind = Kind.DEFAULT;
             } else if (normalized.contains("INDEX") || normalized.contains("KEY")) {
                 kind = Kind.INDEX;
             }

@@ -36,6 +36,11 @@ public class OrderByDeParser extends AbstractDeParser<List<OrderByElement>> {
     }
 
     public void deParse(boolean oracleSiblings, List<OrderByElement> orderByElementList) {
+        deParse(oracleSiblings, orderByElementList, null);
+    }
+
+    public <S> void deParse(boolean oracleSiblings, List<OrderByElement> orderByElementList,
+            S context) {
         if (oracleSiblings) {
             builder.append(" ORDER SIBLINGS BY ");
         } else {
@@ -45,7 +50,12 @@ public class OrderByDeParser extends AbstractDeParser<List<OrderByElement>> {
         for (Iterator<OrderByElement> iterator = orderByElementList.iterator(); iterator
                 .hasNext();) {
             OrderByElement orderByElement = iterator.next();
-            deParseElement(orderByElement);
+            if (context == null) {
+                // Preserve the customization point used by existing subclasses.
+                deParseElement(orderByElement);
+            } else {
+                deParseElement(orderByElement, context);
+            }
             if (iterator.hasNext()) {
                 builder.append(", ");
             }
@@ -53,7 +63,11 @@ public class OrderByDeParser extends AbstractDeParser<List<OrderByElement>> {
     }
 
     public void deParseElement(OrderByElement orderBy) {
-        orderBy.getExpression().accept(expressionVisitor, null);
+        deParseElement(orderBy, null);
+    }
+
+    public <S> void deParseElement(OrderByElement orderBy, S context) {
+        orderBy.getExpression().accept(expressionVisitor, context);
         if (!orderBy.isAsc()) {
             builder.append(" DESC");
         } else if (orderBy.isAscDescPresent()) {
@@ -67,30 +81,30 @@ public class OrderByDeParser extends AbstractDeParser<List<OrderByElement>> {
         }
         if (orderBy.getWithFill() != null) {
             builder.append(' ');
-            deParseWithFill(orderBy.getWithFill());
+            deParseWithFill(orderBy.getWithFill(), context);
         }
         if (orderBy.isMysqlWithRollup()) {
             builder.append(" WITH ROLLUP");
         }
     }
 
-    private void deParseWithFill(WithFill withFill) {
+    private <S> void deParseWithFill(WithFill withFill, S context) {
         builder.append("WITH FILL");
         if (withFill.getFrom() != null) {
             builder.append(" FROM ");
-            withFill.getFrom().accept(expressionVisitor, null);
+            withFill.getFrom().accept(expressionVisitor, context);
         }
         if (withFill.getTo() != null) {
             builder.append(" TO ");
-            withFill.getTo().accept(expressionVisitor, null);
+            withFill.getTo().accept(expressionVisitor, context);
         }
         if (withFill.getStep() != null) {
             builder.append(" STEP ");
-            withFill.getStep().accept(expressionVisitor, null);
+            withFill.getStep().accept(expressionVisitor, context);
         }
         if (withFill.getStaleness() != null) {
             builder.append(" STALENESS ");
-            withFill.getStaleness().accept(expressionVisitor, null);
+            withFill.getStaleness().accept(expressionVisitor, context);
         }
     }
 

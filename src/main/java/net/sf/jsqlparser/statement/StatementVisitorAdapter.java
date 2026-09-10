@@ -14,10 +14,17 @@ import net.sf.jsqlparser.statement.role.AlterRole;
 import net.sf.jsqlparser.statement.role.RoleOption;
 import net.sf.jsqlparser.statement.grant.Revoke;
 import net.sf.jsqlparser.statement.grant.AlterDefaultPrivileges;
+import net.sf.jsqlparser.statement.create.type.CreateType;
+import net.sf.jsqlparser.statement.alter.AlterType;
+import net.sf.jsqlparser.statement.create.domain.CreateDomain;
+import net.sf.jsqlparser.statement.alter.AlterDomain;
+import net.sf.jsqlparser.statement.create.extension.CreateExtension;
+import net.sf.jsqlparser.statement.alter.AlterExtension;
 
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
 import net.sf.jsqlparser.schema.Column;
+import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.schema.Partition;
 import net.sf.jsqlparser.statement.alter.Alter;
 import net.sf.jsqlparser.statement.alter.AlterExpression;
@@ -647,6 +654,58 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
         }
         if (statement.getRevoke() != null) {
             statement.getRevoke().accept(this, context);
+        }
+        return null;
+    }
+
+    @Override
+    public <S> T visit(CreateType statement, S context) {
+
+        return null;
+    }
+
+    @Override
+    public <S> T visit(AlterType statement, S context) {
+
+        return null;
+    }
+
+    @Override
+    public <S> T visit(CreateDomain statement, S context) {
+        if (statement.getDefaultExpression() != null) {
+            statement.getDefaultExpression().accept(expressionVisitor, context);
+        }
+        statement.getConstraints().forEach(constraint -> {
+            if (constraint.getExpression() != null) {
+                constraint.getExpression().accept(expressionVisitor, context);
+            }
+        });
+        return null;
+    }
+
+    @Override
+    public <S> T visit(AlterDomain statement, S context) {
+        if (statement.getDefaultExpression() != null) {
+            statement.getDefaultExpression().accept(expressionVisitor, context);
+        }
+        if (statement.getConstraint() != null
+                && statement.getConstraint().getExpression() != null) {
+            statement.getConstraint().getExpression().accept(expressionVisitor, context);
+        }
+        return null;
+    }
+
+    @Override
+    public <S> T visit(CreateExtension statement, S context) {
+
+        return null;
+    }
+
+    @Override
+    public <S> T visit(AlterExtension statement, S context) {
+        if (statement.getMember() != null && statement.getMember().isTable()) {
+            new Table(statement.getMember().getName())
+                    .accept(fromItemVisitor, context);
         }
         return null;
     }

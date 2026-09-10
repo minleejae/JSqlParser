@@ -14,6 +14,12 @@ import net.sf.jsqlparser.statement.role.AlterRole;
 import net.sf.jsqlparser.statement.grant.Revoke;
 import net.sf.jsqlparser.statement.grant.AlterDefaultPrivileges;
 import net.sf.jsqlparser.statement.create.trigger.CreateTrigger;
+import net.sf.jsqlparser.statement.create.type.CreateType;
+import net.sf.jsqlparser.statement.alter.AlterType;
+import net.sf.jsqlparser.statement.create.domain.CreateDomain;
+import net.sf.jsqlparser.statement.alter.AlterDomain;
+import net.sf.jsqlparser.statement.create.extension.CreateExtension;
+import net.sf.jsqlparser.statement.alter.AlterExtension;
 
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.Expression;
@@ -876,5 +882,47 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
     @Override
     public <S> Void visit(CreateTrigger statement, S context) {
         return schemaOnly();
+    }
+
+    @Override
+    public <S> Void visit(CreateType statement, S context) {
+        analysis.claimTopLevel();
+        analysis.certain(StmtFeature.MODIFIES_SCHEMA);
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterType statement, S context) {
+        analysis.claimTopLevel();
+        analysis.certain(StmtFeature.MODIFIES_SCHEMA);
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(CreateDomain statement, S context) {
+        analysis.claimTopLevel();
+        analysis.certain(StmtFeature.MODIFIES_SCHEMA);
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterDomain statement, S context) {
+        analysis.claimTopLevel();
+        analysis.certain(StmtFeature.MODIFIES_SCHEMA);
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(CreateExtension statement, S context) {
+        analysis.claimTopLevel();
+        analysis.certain(StmtFeature.MODIFIES_SCHEMA);
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterExtension statement, S context) {
+        analysis.claimTopLevel();
+        analysis.certain(StmtFeature.MODIFIES_SCHEMA);
+        return null;
     }
 }

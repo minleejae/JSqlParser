@@ -14,6 +14,7 @@ import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.statement.create.table.CheckConstraint;
 import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
 import net.sf.jsqlparser.statement.create.table.ColumnOption;
+import net.sf.jsqlparser.statement.create.table.DefaultConstraint;
 import net.sf.jsqlparser.statement.create.table.ExcludeConstraint;
 import net.sf.jsqlparser.statement.create.table.Index;
 import net.sf.jsqlparser.statement.create.table.TableElement;
@@ -30,7 +31,10 @@ public class TableElementDeParser extends AbstractDeParser<TableElement> {
 
     @Override
     public void deParse(TableElement element) {
-        if (element instanceof ExcludeConstraint) {
+        if (element instanceof DefaultConstraint) {
+            ((DefaultConstraint) element).appendTo(builder,
+                    expression -> expression.accept(expressionVisitor, null));
+        } else if (element instanceof ExcludeConstraint) {
             deParseExclude((ExcludeConstraint) element);
         } else if (element instanceof CheckConstraint) {
             deParseCheck((CheckConstraint) element);

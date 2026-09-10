@@ -273,6 +273,33 @@ Table constraints expose ``Index.getNullsDistinct()``, ``getIncludeColumns()``, 
 Identity alterations are available as ``ColumnDataType.getIdentityAlterations()``. Sequence ownership is shared by ``CreateSequence`` and ``AlterSequence`` through ``Sequence.getOwnership()``: ``null`` means omitted, ``isNone()`` means explicit ``OWNED BY NONE``, and ``getColumn()`` identifies an owner. ``TablesNamesFinder`` includes ``LIKE`` sources and sequence owners without treating sequence or type names as tables. See `ALTER TABLE <https://www.postgresql.org/docs/18/sql-altertable.html>`_ and `ALTER SEQUENCE <https://www.postgresql.org/docs/18/sql-altersequence.html>`_.
 
 
+Inspect type, domain and extension statements
+=============================================
+
+PostgreSQL type DDL uses the existing column data-type model. A ``CreateType`` exposes its qualified name and a ``TypeDefinition``: ``EnumTypeDefinition``, ``CompositeTypeDefinition`` or ``RangeTypeDefinition``. A null definition denotes a shell type. Enum labels are ordered ``StringValue`` nodes, composite attributes carry a name, ``ColDataType`` and optional collation, and range options distinguish the subtype from names of support functions, collations and operator classes.
+
+.. code-block:: java
+
+    CreateType type = (CreateType) CCJSqlParserUtil.parse(
+            "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')");
+    EnumTypeDefinition definition = (EnumTypeDefinition) type.getDefinition();
+    String firstLabel = definition.getLabels().get(0).getValue();
+
+    AlterType alteration = (AlterType) CCJSqlParserUtil.parse(
+            "ALTER TYPE mood ADD VALUE IF NOT EXISTS 'fine' AFTER 'ok'");
+    alteration.getPosition();       // AlterType.Position.AFTER
+    alteration.getNeighborValue(); // StringValue containing 'ok'
+
+``AlterType`` also models type ownership, renaming, schema moves and ordered composite-attribute changes. Base-type I/O definitions and base-type ``SET (...)`` alterations are not part of this support.
+
+``CreateDomain`` stores a ``ColDataType``, default expression and ordered ``DomainConstraint`` nodes. Each constraint distinguishes nullability from a check expression and preserves its optional name. ``AlterDomain`` models default/nullability changes, constraint actions, ownership, renaming and schema moves. Its ``isNotValid()`` flag describes the newly added check constraint. Domain expressions participate in statement visitors, expression deparsers and validation.
+
+``CreateExtension`` preserves ``IF NOT EXISTS``, the optional ``WITH``, and ordered schema/version/cascade options. Version identifiers and quoted versions are represented as ``Column`` and ``StringValue``, respectively. ``AlterExtension`` distinguishes update, schema change, and member addition/removal. An ``ExtensionObject`` identifies the object kind and target; function/procedure/aggregate members expose a ``RoutineReference`` with typed signature arguments, not call expressions. A null argument list means the signature was omitted, whereas an empty list means explicit ``()``.
+
+Type names, domain names and routine signatures are not reported as tables by ``TablesNamesFinder``; relation members of an extension are included. Extension scripts themselves are not inspected or executed. The obsolete ``CREATE EXTENSION ... FROM`` form is not supported.
+
+See PostgreSQL's documentation for `CREATE TYPE <https://www.postgresql.org/docs/18/sql-createtype.html>`_, `ALTER TYPE <https://www.postgresql.org/docs/18/sql-altertype.html>`_, `CREATE DOMAIN <https://www.postgresql.org/docs/18/sql-createdomain.html>`_ and `ALTER EXTENSION <https://www.postgresql.org/docs/18/sql-alterextension.html>`_.
+
 Classify a Statement
 ==============================
 

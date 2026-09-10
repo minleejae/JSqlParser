@@ -13,6 +13,12 @@ import net.sf.jsqlparser.statement.role.CreateRole;
 import net.sf.jsqlparser.statement.role.AlterRole;
 import net.sf.jsqlparser.statement.grant.Revoke;
 import net.sf.jsqlparser.statement.grant.AlterDefaultPrivileges;
+import net.sf.jsqlparser.statement.create.type.CreateType;
+import net.sf.jsqlparser.statement.alter.AlterType;
+import net.sf.jsqlparser.statement.create.domain.CreateDomain;
+import net.sf.jsqlparser.statement.alter.AlterDomain;
+import net.sf.jsqlparser.statement.create.extension.CreateExtension;
+import net.sf.jsqlparser.statement.alter.AlterExtension;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -2219,7 +2225,9 @@ public class TablesNamesFinder<Void>
 
     @Override
     public <S> Void visit(XMLSerializeExpr xmlSerializeExpr, S context) {
-
+        for (Expression expression : xmlSerializeExpr.getExpressions()) {
+            expression.accept(this, context);
+        }
         return null;
     }
 
@@ -2522,6 +2530,57 @@ public class TablesNamesFinder<Void>
 
     @Override
     public <S> Void visit(AlterDefaultPrivileges statement, S context) {
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(CreateType statement, S context) {
+
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterType statement, S context) {
+
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(CreateDomain statement, S context) {
+        if (statement.getDefaultExpression() != null) {
+            statement.getDefaultExpression().accept(this, context);
+        }
+        statement.getConstraints().forEach(constraint -> {
+            if (constraint.getExpression() != null) {
+                constraint.getExpression().accept(this, context);
+            }
+        });
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterDomain statement, S context) {
+        if (statement.getDefaultExpression() != null) {
+            statement.getDefaultExpression().accept(this, context);
+        }
+        if (statement.getConstraint() != null
+                && statement.getConstraint().getExpression() != null) {
+            statement.getConstraint().getExpression().accept(this, context);
+        }
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(CreateExtension statement, S context) {
+
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterExtension statement, S context) {
+        if (statement.getMember() != null && statement.getMember().isTable()) {
+            visit(new Table(statement.getMember().getName()), context);
+        }
         return null;
     }
 }

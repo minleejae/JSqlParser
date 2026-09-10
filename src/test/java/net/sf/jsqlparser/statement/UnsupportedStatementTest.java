@@ -9,6 +9,8 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.statement.create.domain.CreateDomain;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -140,7 +142,7 @@ public class UnsupportedStatementTest {
         sqlStr =
                 "create domain TNOTIFICATION_ACTION as ENUM ('ADD', 'CHANGE', 'DEL')";
         statement = TestUtils.assertSqlCanBeParsedAndDeparsed(sqlStr, true);
-        assertTrue(statement instanceof UnsupportedStatement);
+        assertInstanceOf(CreateDomain.class, statement);
     }
 
     @Test
