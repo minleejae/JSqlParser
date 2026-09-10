@@ -104,6 +104,21 @@ public class InsertConflictTarget implements Serializable {
             }
 
             @Override
+            public boolean addAll(Collection<? extends String> names) {
+                return addAll(size(), names);
+            }
+
+            @Override
+            public boolean addAll(int index, Collection<? extends String> names) {
+                int insertionIndex = index == size() ? indexElements.size() : elementIndex(index);
+                List<Index.ColumnParams> additions = new ArrayList<>();
+                for (String name : names) {
+                    additions.add(new Index.ColumnParams(name));
+                }
+                return indexElements.addAll(insertionIndex, additions);
+            }
+
+            @Override
             public String remove(int index) {
                 return indexElements.remove(elementIndex(index)).getColumnName();
             }

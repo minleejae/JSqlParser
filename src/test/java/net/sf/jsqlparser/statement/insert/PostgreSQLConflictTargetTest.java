@@ -111,6 +111,19 @@ class PostgreSQLConflictTargetTest {
     }
 
     @Test
+    void bulkColumnAdditionsSnapshotTheMutableView() {
+        InsertConflictTarget target = new InsertConflictTarget("id", null, null, null);
+        List<String> names = target.getIndexColumnNames();
+        assertTrue(target.addAllIndexColumnNames(names));
+        assertEquals(List.of("id", "id"), names);
+        assertTrue(names.addAll(names));
+        assertEquals(4, names.size());
+        assertTrue(names.addAll(1, names.subList(0, 2)));
+        assertEquals(6, names.size());
+        assertFalse(names.addAll(List.of()));
+    }
+
+    @Test
     void statementVisitorTraversesTargetExpressions() throws Exception {
         Insert insert = (Insert) CCJSqlParserUtil.parse("INSERT INTO users VALUES (1) "
                 + "ON CONFLICT ((lower(email))) WHERE active DO NOTHING");
