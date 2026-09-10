@@ -60,6 +60,11 @@ public class MergeDeParser extends AbstractDeParser<Merge>
             operations.forEach(operation -> operation.accept(this, null));
         }
 
+        if (merge.getReturningClause() != null) {
+            merge.getReturningClause().appendTo(builder,
+                    item -> item.accept(selectDeParser, null));
+        }
+
         if (merge.getOutputClause() != null) {
             merge.getOutputClause().appendTo(builder);
         }

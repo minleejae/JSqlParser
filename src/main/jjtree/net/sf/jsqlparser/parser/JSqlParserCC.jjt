@@ -4640,11 +4640,15 @@ Insert Insert():
             ]   table=Table()
             [ LOOKAHEAD(2) <K_PARTITION> "(" partitions=Partitions() ")" ]
 
-            [ LOOKAHEAD({ isAliasAhead() }) [<K_AS> { useAs = true; } ] name=RelObjectName() { table.setAlias(new Alias(name,useAs)); }]
+            [ LOOKAHEAD({ isAliasAhead() && !(getToken(1).kind == K_OVERRIDING
+                    && (getToken(2).kind == K_SYSTEM || getToken(2).kind == K_USER)) })
+                [<K_AS> { useAs = true; } ] name=RelObjectName() { table.setAlias(new Alias(name,useAs)); }]
 
             [ LOOKAHEAD(2) "(" columns=ColumnList() ")"  ]
 
-            [ LOOKAHEAD(2) <K_OVERRIDING> <K_SYSTEM> <K_VALUE> { insert.setOverriding(true); } ]
+            [ LOOKAHEAD(2) <K_OVERRIDING>
+                ( <K_SYSTEM> { insert.setOverridingMode(Insert.OverridingMode.SYSTEM); }
+                | <K_USER> { insert.setOverridingMode(Insert.OverridingMode.USER); } ) <K_VALUE> ]
 
             [ outputClause = OutputClause() { insert.setOutputClause(outputClause); } ]
 
@@ -4762,35 +4766,46 @@ List<OracleMultiInsertClause> OracleMultiInsertClauseList():
     }
 }
 
-InsertConflictTarget  InsertConflictTarget():
+InsertConflictTarget InsertConflictTarget():
 {
-    String indexColumnName;
-    ArrayList<String> indexColumnNames = new ArrayList<String>();
-    Expression indexExpression = null;
-    Expression whereExpression = null;
-    String constraintName = null ;
+    InsertConflictTarget target = new InsertConflictTarget();
+    List<Index.ColumnParams> elements = new ArrayList<Index.ColumnParams>();
+    Index.ColumnParams element;
+    Expression whereExpression;
+    String constraintName;
 }
 {
     (
-        (
-            "("
-            indexColumnName = RelObjectNameExt() { indexColumnNames.add(indexColumnName); }
-            ( "," indexColumnName = RelObjectNameExt() { indexColumnNames.add(indexColumnName); } )*
-//            |
-//            (
-//                "(" indexExpression = Expression() ")"
-//            )
-
-            ")"
-            [ whereExpression = WhereClause() ]
-        )
+        "(" element=InsertConflictIndexElement() { elements.add(element); }
+        ( "," element=InsertConflictIndexElement() { elements.add(element); } )* ")"
+        { target.setIndexElements(elements); }
+        [ whereExpression=WhereClause() { target.setWhereExpression(whereExpression); } ]
         |
-        (
-         <K_ON> <K_CONSTRAINT> constraintName = RelObjectNameExt()
-        )
+        <K_ON> <K_CONSTRAINT> constraintName=RelObjectNameExt()
+        { target.setConstraintName(constraintName); }
     )
+    { return target; }
+}
 
-    { return new InsertConflictTarget(indexColumnNames, indexExpression, whereExpression, constraintName); }
+Index.ColumnParams InsertConflictIndexElement():
+{
+    Index.ColumnParams element;
+    String name;
+    Expression expression;
+    ObjectNames collation;
+    ObjectNames operatorClass;
+}
+{
+    (
+        LOOKAHEAD({ isFunctionAhead() }) expression=Function()
+        { element = new Index.ColumnParams(expression).withExpressionParenthesized(false); }
+        | name=RelObjectNameExt() { element = new Index.ColumnParams(name); }
+        | "(" expression=Expression() ")" { element = new Index.ColumnParams(expression); }
+    )
+    [ LOOKAHEAD(2) <K_COLLATE> collation=RelObjectNames()
+        { element.setCollation(new Table(collation.getNames()).getFullyQualifiedName()); } ]
+    [ LOOKAHEAD(2) operatorClass=RelObjectNames() { element.setOperatorClass(new Table(operatorClass.getNames()).getFullyQualifiedName()); } ]
+    { return element; }
 }
 
 InsertConflictAction InsertConflictAction():
@@ -4989,6 +5004,7 @@ Statement Merge( List<WithItem<?>> with ) : {
     Expression condition;
     List<MergeOperation> operations;
     OutputClause outputClause;
+    ReturningClause returningClause;
     OptionClause optionClause = null;
 }
 {
@@ -4997,6 +5013,8 @@ Statement Merge( List<WithItem<?>> with ) : {
     <K_ON> condition = Expression() { merge.setOnCondition(condition); }
 
     operations = MergeOperations() { merge.setOperations(operations); }
+
+    [ returningClause = ReturningClause() { merge.setReturningClause(returningClause); } ]
 
     [ outputClause = OutputClause() { merge.setOutputClause(outputClause); } ]
 

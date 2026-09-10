@@ -1458,6 +1458,9 @@ public class TablesNamesFinder<Void>
         if (insert.getConflictAction() != null) {
             visitInsertAction(insert.getConflictAction(), context);
         }
+        if (insert.getConflictTarget() != null) {
+            insert.getConflictTarget().accept(this, context);
+        }
         visitOutputClause(insert.getOutputClause(), context);
         visitReturningClause(insert.getReturningClause(), context);
         if (insert.getSelect() != null) {
@@ -1786,6 +1789,7 @@ public class TablesNamesFinder<Void>
                 operation.accept(this, context);
             }
         }
+        visitReturningClause(merge.getReturningClause(), context);
         return null;
     }
 

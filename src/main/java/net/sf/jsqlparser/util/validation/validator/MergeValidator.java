@@ -27,6 +27,10 @@ public class MergeValidator<Void> extends AbstractValidator<Merge>
         for (ValidationCapability c : getCapabilities()) {
             validateFeature(c, Feature.merge);
         }
+        if (merge.getReturningClause() != null) {
+            SelectValidator validator = getValidator(SelectValidator.class);
+            merge.getReturningClause().forEach(item -> item.accept(validator, null));
+        }
         validateOptionalExpression(merge.getOnCondition());
         if (merge.getOperations() != null) {
             merge.getOperations().forEach(operation -> operation.accept(this, null));

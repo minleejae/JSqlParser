@@ -14,6 +14,7 @@ import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.OracleHint;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.OutputClause;
+import net.sf.jsqlparser.statement.ReturningClause;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.StatementVisitor;
 import net.sf.jsqlparser.statement.select.FromItem;
@@ -41,8 +42,22 @@ public class Merge implements Statement {
     private boolean insertFirst = false;
     private List<MergeOperation> operations;
 
+    private ReturningClause returningClause;
     private OutputClause outputClause;
     private OptionClause option;
+
+    public ReturningClause getReturningClause() {
+        return returningClause;
+    }
+
+    public Merge setReturningClause(ReturningClause returningClause) {
+        this.returningClause = returningClause;
+        return this;
+    }
+
+    public Merge withReturningClause(ReturningClause returningClause) {
+        return setReturningClause(returningClause);
+    }
 
     private void deriveOperationsFromStandardClauses() {
         List<MergeOperation> operations = new ArrayList<>();
@@ -257,6 +272,10 @@ public class Merge implements Statement {
 
         if (operations != null && !operations.isEmpty()) {
             operations.forEach(b::append);
+        }
+
+        if (returningClause != null) {
+            returningClause.appendTo(b);
         }
 
         if (outputClause != null) {

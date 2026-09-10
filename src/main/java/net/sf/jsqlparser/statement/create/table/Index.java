@@ -331,6 +331,7 @@ public class Index implements TableElement, Serializable {
         public final String columnName;
         public final List<String> params;
         private final Expression expression;
+        private boolean expressionParenthesized = true;
         private String collation;
         private String operatorClass;
         private List<Option> operatorClassParameters;
@@ -384,6 +385,19 @@ public class Index implements TableElement, Serializable {
 
         public boolean isExpression() {
             return expression != null;
+        }
+
+        public boolean isExpressionParenthesized() {
+            return expressionParenthesized;
+        }
+
+        public void setExpressionParenthesized(boolean expressionParenthesized) {
+            this.expressionParenthesized = expressionParenthesized;
+        }
+
+        public ColumnParams withExpressionParenthesized(boolean expressionParenthesized) {
+            setExpressionParenthesized(expressionParenthesized);
+            return this;
         }
 
         public String getCollation() {
@@ -461,9 +475,13 @@ public class Index implements TableElement, Serializable {
         /** Renders expression keys through the caller's expression printer. */
         public void appendTo(StringBuilder builder, Consumer<Expression> expressionPrinter) {
             if (expression != null) {
-                builder.append('(');
+                if (expressionParenthesized) {
+                    builder.append('(');
+                }
                 expressionPrinter.accept(expression);
-                builder.append(')');
+                if (expressionParenthesized) {
+                    builder.append(')');
+                }
             } else {
                 builder.append(columnName);
             }

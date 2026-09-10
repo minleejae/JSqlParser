@@ -105,7 +105,7 @@ public class InsertDeParser extends AbstractDeParser<Insert> {
         }
 
         if (insert.isOverriding()) {
-            builder.append("OVERRIDING SYSTEM VALUE ");
+            builder.append(" OVERRIDING ").append(insert.getOverridingMode()).append(" VALUE");
         }
 
         if (insert.getPartitions() != null) {
@@ -147,7 +147,8 @@ public class InsertDeParser extends AbstractDeParser<Insert> {
             builder.append(" ON CONFLICT");
 
             if (insert.getConflictTarget() != null) {
-                insert.getConflictTarget().appendTo(builder);
+                insert.getConflictTarget().appendTo(builder,
+                        expression -> expression.accept(expressionVisitor, null));
             }
             insert.getConflictAction().appendTo(builder);
         }

@@ -296,6 +296,9 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
             expressionVisitor.visitUpdateSets(conflictAction.getUpdateSets(), context);
         }
 
+        if (insert.getConflictTarget() != null) {
+            insert.getConflictTarget().accept(expressionVisitor, context);
+        }
         visitReturningClause(insert.getReturningClause(), context);
         return null;
     }
@@ -457,6 +460,7 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
         expressionVisitor.visitExpression(merge.getOnCondition(), context);
         mergeOperationVisitor.visit(merge.getOperations(), context);
         selectVisitor.visitOutputClause(merge.getOutputClause(), context);
+        visitReturningClause(merge.getReturningClause(), context);
         return null;
     }
 

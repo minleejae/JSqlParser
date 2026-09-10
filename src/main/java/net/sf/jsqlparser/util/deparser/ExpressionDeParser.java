@@ -842,7 +842,9 @@ public class ExpressionDeParser extends AbstractDeParser<Expression>
                 tableName = table.getFullyQualifiedName();
             }
         }
-        if (tableName != null && !tableName.isEmpty()) {
+        if (tableColumn.getReturningQualifier() != null) {
+            builder.append(tableColumn.getReturningQualifier()).append(".");
+        } else if (tableName != null && !tableName.isEmpty()) {
             builder.append(tableName).append(tableColumn.getTableDelimiter());
         }
 
