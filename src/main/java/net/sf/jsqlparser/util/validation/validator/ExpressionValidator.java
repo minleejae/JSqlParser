@@ -1052,6 +1052,10 @@ public class ExpressionValidator extends AbstractValidator<Expression>
 
     @Override
     public <S> Void visit(XMLSerializeExpr xml, S context) {
+        xml.validateOptions();
+        for (Expression expression : xml.getExpressions()) {
+            expression.accept(this, context);
+        }
         return null;
     }
 

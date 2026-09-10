@@ -562,6 +562,10 @@ public enum Feature {
     /** Publication and subscription definitions. */
     createPublication, alterPublication, createSubscription, alterSubscription,
     /**
+     * Structured type, domain and extension statements.
+     */
+    createType, alterType, createDomain, alterDomain, createExtension, alterExtension,
+    /**
      * SQL "CREATE SYNONYM" statement is allowed
      *
      * @see CreateSynonym

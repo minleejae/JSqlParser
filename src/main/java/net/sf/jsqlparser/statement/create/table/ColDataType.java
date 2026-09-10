@@ -47,6 +47,7 @@ public class ColDataType implements Serializable {
     private Integer scale;
     private List<TypeModifier> typeModifiers;
     private NationalCharacterType nationalCharacterType;
+    private XmlTypeModifier xmlTypeModifier;
 
     public ColDataType() {
         // empty constructor
@@ -182,6 +183,19 @@ public class ColDataType implements Serializable {
         return nationalCharacterType != null;
     }
 
+    public XmlTypeModifier getXmlTypeModifier() {
+        return xmlTypeModifier;
+    }
+
+    public void setXmlTypeModifier(XmlTypeModifier xmlTypeModifier) {
+        this.xmlTypeModifier = xmlTypeModifier;
+    }
+
+    public ColDataType withXmlTypeModifier(XmlTypeModifier xmlTypeModifier) {
+        setXmlTypeModifier(xmlTypeModifier);
+        return this;
+    }
+
     /**
      * The first numeric type parameter, e.g. {@code 255} for {@code VARCHAR(255)} or {@code 10} for
      * {@code DECIMAL(10, 2)}. {@code MAX} is reported as {@link Integer#MAX_VALUE}. Returns
@@ -220,6 +234,7 @@ public class ColDataType implements Serializable {
         }
         return dataType
                 + (intervalQualifier != null ? " " + intervalQualifier.toString() : "")
+                + (xmlTypeModifier != null ? " " + xmlTypeModifier : "")
                 + (argumentsStringList != null
                         ? " " + PlainSelect.getStringList(argumentsStringList, true, true)
                         : "")
@@ -330,12 +345,16 @@ public class ColDataType implements Serializable {
                 && signedness == that.signedness
                 && zerofill == that.zerofill
                 && Objects.equals(typeModifiers, that.typeModifiers)
+                && Objects.equals(xmlTypeModifier, that.xmlTypeModifier)
                 && nationalCharacterType == that.nationalCharacterType;
     }
 
     @Override
     public int hashCode() {
-        int result = dataType.hashCode();
+        // Use the same per-code-point case folding as String.equalsIgnoreCase, including Unicode.
+        int result = dataType.codePoints()
+                .map(c -> Character.toLowerCase(Character.toUpperCase(c)))
+                .reduce(0, (hash, c) -> 31 * hash + c);
         result = 31 * result + Objects.hashCode(argumentsStringList);
         result = 31 * result + Objects.hashCode(characterSet);
         result = 31 * result + Objects.hashCode(intervalQualifier);
@@ -344,6 +363,7 @@ public class ColDataType implements Serializable {
         result = 31 * result + Boolean.hashCode(zerofill);
         result = 31 * result + Objects.hashCode(typeModifiers);
         result = 31 * result + Objects.hashCode(nationalCharacterType);
+        result = 31 * result + Objects.hashCode(xmlTypeModifier);
         return result;
     }
 }

@@ -9,6 +9,12 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.statement.create.type.CreateType;
+import net.sf.jsqlparser.statement.alter.AlterType;
+import net.sf.jsqlparser.statement.create.domain.CreateDomain;
+import net.sf.jsqlparser.statement.alter.AlterDomain;
+import net.sf.jsqlparser.statement.create.extension.CreateExtension;
+import net.sf.jsqlparser.statement.alter.AlterExtension;
 import net.sf.jsqlparser.statement.create.publication.CreatePublication;
 import net.sf.jsqlparser.statement.alter.AlterPublication;
 import net.sf.jsqlparser.statement.create.subscription.CreateSubscription;
@@ -396,6 +402,54 @@ public interface StatementVisitor<T> {
 
     default void visit(CreatePolicy createPolicy) {
         this.visit(createPolicy, null);
+    }
+
+    default <S> T visit(CreateType statement, S context) {
+        return null;
+    }
+
+    default void visit(CreateType statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(AlterType statement, S context) {
+        return null;
+    }
+
+    default void visit(AlterType statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(CreateDomain statement, S context) {
+        return null;
+    }
+
+    default void visit(CreateDomain statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(AlterDomain statement, S context) {
+        return null;
+    }
+
+    default void visit(AlterDomain statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(CreateExtension statement, S context) {
+        return null;
+    }
+
+    default void visit(CreateExtension statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(AlterExtension statement, S context) {
+        return null;
+    }
+
+    default void visit(AlterExtension statement) {
+        visit(statement, null);
     }
 
     default <S> T visit(CreatePublication statement, S context) {

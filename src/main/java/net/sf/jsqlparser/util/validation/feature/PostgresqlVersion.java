@@ -93,7 +93,10 @@ public enum PostgresqlVersion implements Version {
                     // https://www.postgresql.org/docs/current/sql-createsequence.html
                     Feature.createSequence,
                     Feature.createPublication, Feature.alterPublication,
-                    Feature.createSubscription, Feature.alterSubscription, // https://www.postgresql.org/docs/current/sql-altersequence.html
+                    Feature.createSubscription, Feature.alterSubscription,
+                    Feature.createType, Feature.alterType,
+                    Feature.createDomain, Feature.alterDomain,
+                    Feature.createExtension, Feature.alterExtension, // https://www.postgresql.org/docs/current/sql-altersequence.html
                     Feature.alterSequence, // https://www.postgresql.org/docs/current/sql-createschema.html
                     Feature.createSchema, // https://www.postgresql.org/docs/current/sql-createindex.html
                     Feature.createIndex, // https://www.postgresql.org/docs/current/sql-createtable.html

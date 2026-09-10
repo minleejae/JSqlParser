@@ -9,7 +9,6 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
-import net.sf.jsqlparser.statement.create.view.AutoRefreshOption;
 import net.sf.jsqlparser.statement.create.view.CreateView;
 import net.sf.jsqlparser.statement.create.view.TemporaryOption;
 import net.sf.jsqlparser.statement.select.PlainSelect;
@@ -74,9 +73,7 @@ public class CreateViewDeParser extends AbstractDeParser<CreateView> {
         if (createView.isIfNotExists() && createView.isIfNotExistsAfterViewName()) {
             builder.append(" IF NOT EXISTS");
         }
-        if (createView.getAutoRefresh() != AutoRefreshOption.NONE) {
-            builder.append(" AUTO REFRESH ").append(createView.getAutoRefresh().name());
-        }
+        createView.appendMaterializationOptionsTo(builder);
         if (createView.getColumnNames() != null) {
             builder.append("(");
             builder.append(createView.getColumnNames());

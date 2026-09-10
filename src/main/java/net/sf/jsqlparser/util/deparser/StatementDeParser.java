@@ -9,6 +9,12 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
+import net.sf.jsqlparser.statement.create.type.CreateType;
+import net.sf.jsqlparser.statement.alter.AlterType;
+import net.sf.jsqlparser.statement.create.domain.CreateDomain;
+import net.sf.jsqlparser.statement.alter.AlterDomain;
+import net.sf.jsqlparser.statement.create.extension.CreateExtension;
+import net.sf.jsqlparser.statement.alter.AlterExtension;
 import net.sf.jsqlparser.statement.create.publication.CreatePublication;
 import net.sf.jsqlparser.statement.alter.AlterPublication;
 import net.sf.jsqlparser.statement.create.subscription.CreateSubscription;
@@ -413,13 +419,11 @@ public class StatementDeParser extends AbstractDeParser<Statement>
 
     @Override
     public <S> StringBuilder visit(ExplainStatement explainStatement, S context) {
-        builder.append(explainStatement.getKeyword()).append(" ");
+        builder.append(explainStatement.getKeyword());
         if (explainStatement.getTable() != null) {
-            builder.append(explainStatement.getTable());
-        } else if (explainStatement.getOptions() != null) {
-            builder.append(explainStatement.getOptions().values().stream()
-                    .map(ExplainStatement.Option::formatOption).collect(Collectors.joining(" ")));
-            builder.append(" ");
+            builder.append(" ").append(explainStatement.getTable());
+        } else {
+            explainStatement.appendOptionsTo(builder).append(" ");
         }
         if (explainStatement.getStatement() != null) {
             explainStatement.getStatement().accept(this, context);
@@ -564,6 +568,42 @@ public class StatementDeParser extends AbstractDeParser<Statement>
     @Override
     public <S> StringBuilder visit(CreatePolicy createPolicy, S context) {
         new CreatePolicyDeParser(expressionDeParser, builder).deParse(createPolicy);
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(CreateType statement, S context) {
+        builder.append(statement);
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(AlterType statement, S context) {
+        builder.append(statement);
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(CreateDomain statement, S context) {
+        statement.appendTo(builder, expression -> expression.accept(expressionDeParser, context));
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(AlterDomain statement, S context) {
+        statement.appendTo(builder, expression -> expression.accept(expressionDeParser, context));
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(CreateExtension statement, S context) {
+        builder.append(statement);
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(AlterExtension statement, S context) {
+        builder.append(statement);
         return builder;
     }
 

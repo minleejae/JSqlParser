@@ -713,13 +713,7 @@ public class ExpressionVisitorAdapter<T>
 
     @Override
     public <S> T visit(XMLSerializeExpr xmlSerializeExpr, S context) {
-        ArrayList<Expression> subExpressions = new ArrayList<>();
-
-        subExpressions.add(xmlSerializeExpr.getExpression());
-        for (OrderByElement orderByElement : xmlSerializeExpr.getOrderByElements()) {
-            subExpressions.add(orderByElement.getExpression());
-        }
-        return visitExpressions(xmlSerializeExpr, context, subExpressions);
+        return visitExpressions(xmlSerializeExpr, context, xmlSerializeExpr.getExpressions());
     }
 
     @Override
