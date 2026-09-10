@@ -9,6 +9,11 @@
  */
 package net.sf.jsqlparser.util.validation.validator;
 
+import net.sf.jsqlparser.statement.role.CreateRole;
+import net.sf.jsqlparser.statement.role.AlterRole;
+import net.sf.jsqlparser.statement.role.RoleOption;
+import net.sf.jsqlparser.statement.grant.Revoke;
+import net.sf.jsqlparser.statement.grant.AlterDefaultPrivileges;
 import net.sf.jsqlparser.schema.Table;
 
 import net.sf.jsqlparser.statement.create.type.CreateType;
@@ -107,6 +112,11 @@ public class StatementValidator extends AbstractValidator<Statement>
 
     @Override
     public <S> Void visit(CreateTrigger createTrigger, S context) {
+        if (createTrigger.getRoutine() != null) {
+            validateFeature(Feature.createTrigger);
+        }
+        createTrigger.visit(this::validateOptionalFromItem,
+                this::validateOptionalExpression);
         if (createTrigger.getBody() != null) {
             createTrigger.getBody().accept(this, context);
         }
@@ -671,6 +681,47 @@ public class StatementValidator extends AbstractValidator<Statement>
 
     public void visit(CreatePolicy createPolicy) {
         visit(createPolicy, null);
+    }
+
+    @Override
+    public <S> Void visit(CreateRole statement, S context) {
+        validateFeature(Feature.createRole);
+        for (RoleOption option : statement.getOptions()) {
+            validateOptionalExpression(option.getValue());
+        }
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterRole statement, S context) {
+        validateFeature(Feature.alterRole);
+        for (RoleOption option : statement.getOptions()) {
+            validateOptionalExpression(option.getValue());
+        }
+        if (statement.getValues() != null) {
+            statement.getValues().forEach(this::validateOptionalExpression);
+        }
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(Revoke statement, S context) {
+        validateFeature(Feature.revoke);
+        statement.getClause().visit(this::validateOptionalFromItem,
+                this::validateOptionalExpression);
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterDefaultPrivileges statement, S context) {
+        validateFeature(Feature.alterDefaultPrivileges);
+        if (statement.getGrant() != null) {
+            statement.getGrant().accept(this, context);
+        }
+        if (statement.getRevoke() != null) {
+            statement.getRevoke().accept(this, context);
+        }
+        return null;
     }
 
     @Override

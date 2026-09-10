@@ -643,7 +643,7 @@ public enum Feature {
     /**
      * @see Grant
      */
-    grant,
+    grant, revoke, createRole, alterRole, alterDefaultPrivileges,
     /**
      * @see Function
      */

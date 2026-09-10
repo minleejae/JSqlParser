@@ -9,6 +9,10 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.statement.role.CreateRole;
+import net.sf.jsqlparser.statement.role.AlterRole;
+import net.sf.jsqlparser.statement.grant.Revoke;
+import net.sf.jsqlparser.statement.grant.AlterDefaultPrivileges;
 import net.sf.jsqlparser.statement.create.type.CreateType;
 import net.sf.jsqlparser.statement.alter.AlterType;
 import net.sf.jsqlparser.statement.create.domain.CreateDomain;
@@ -402,6 +406,39 @@ public interface StatementVisitor<T> {
 
     default void visit(CreatePolicy createPolicy) {
         this.visit(createPolicy, null);
+    }
+
+
+    default <S> T visit(CreateRole statement, S context) {
+        return null;
+    }
+
+    default void visit(CreateRole statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(AlterRole statement, S context) {
+        return null;
+    }
+
+    default void visit(AlterRole statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(Revoke statement, S context) {
+        return null;
+    }
+
+    default void visit(Revoke statement) {
+        visit(statement, null);
+    }
+
+    default <S> T visit(AlterDefaultPrivileges statement, S context) {
+        return null;
+    }
+
+    default void visit(AlterDefaultPrivileges statement) {
+        visit(statement, null);
     }
 
     default <S> T visit(CreateType statement, S context) {

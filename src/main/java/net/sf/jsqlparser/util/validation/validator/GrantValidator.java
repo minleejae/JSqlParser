@@ -26,11 +26,10 @@ public class GrantValidator extends AbstractValidator<Grant> {
             if (isNotEmpty(grant.getUsers())) {
                 grant.getUsers().forEach(u -> validateName(NamedObject.user, u));
             }
-            if (grant.getRole() != null) {
-                validateName(NamedObject.role, grant.getRole());
-            }
+            grant.getRoles().forEach(role -> validateName(NamedObject.role, role));
 
-            // can't validate grant.getObjectName() - don't know the kind of this object.
+            grant.getClause().visit(this::validateOptionalFromItem,
+                    this::validateOptionalExpression);
         }
     }
 

@@ -808,3 +808,51 @@ You need ``JDK 8`` or ``JDK 11``. JSQLParser-4.9 is the last ``JDK 8`` compatibl
     git clone --depth 1 https://github.com/JSQLParser/JSqlParser.git
     cd JSqlParser
     gradle publishToMavenLocal
+
+PostgreSQL roles, privileges and triggers
+-----------------------------------------
+
+``CreateRole`` and ``AlterRole`` model role attributes and configuration changes,
+including PostgreSQL's USER/GROUP aliases. Role options are ordered and typed;
+passwords and configuration values are expressions. Omitted options remain
+omitted. ``CREATE USER name`` without attributes retains the existing MySQL
+``CreateUser`` AST by default. Select ``Dialect.POSTGRESQL`` explicitly to obtain
+the PostgreSQL ``CreateRole`` AST for this ambiguous form::
+
+    CreateRole user = (CreateRole) CCJSqlParserUtil.parse(
+        "CREATE USER app",
+        parser -> parser.withDialect(AbstractJSqlParser.Dialect.POSTGRESQL));
+
+``Grant`` retains its string-based getters, setters and fluent methods. Its
+``PrivilegeClause`` exposes typed ``Privilege`` items, column lists,
+``PrivilegeTarget`` kinds, multiple role memberships and grantor information.
+``getPrivileges()`` is a mutable string view of the typed privilege list.
+``getRole()`` and ``getObjectName()`` expose the first role or named target for
+legacy callers; use ``getRoles()`` and ``getTarget()`` for the complete lists.
+Names in ``PrivilegeTarget`` are multipart identifiers, not SQL clause text.
+Routine targets use ``RoutineReference`` data-type signatures, with null
+arguments for an omitted signature and an empty list for explicit ``()``.
+
+``Revoke`` shares the privilege payload and adds the revoked option and
+CASCADE/RESTRICT behavior. ``AlterDefaultPrivileges`` has separate role/schema
+scope and one nested GRANT or REVOKE. Table-name discovery reports explicit
+table targets, not schema-wide targets, routine/type names or role names.
+
+``CreateTrigger`` supports both its existing MySQL statement body and a distinct
+PostgreSQL routine invocation. PostgreSQL fields include multiple events,
+UPDATE OF columns, constraint attributes, transition relations, row/statement
+orientation and a WHEN expression. The absence of FOR ROW/STATEMENT is retained.
+Expression visitors and ``StatementDeParser`` traverse privilege columns,
+role values, trigger conditions and invocation arguments. Declaring a trigger
+is classified as a schema change, not execution of its body.
+
+Capability validation covers these statement families, not every server-version
+or catalog-dependent restriction. EVENT TRIGGER is outside this support.
+Serialized role SQL can contain passwords; avoid logging real credentials.
+
+References: `CREATE ROLE <https://www.postgresql.org/docs/18/sql-createrole.html>`_,
+`ALTER ROLE <https://www.postgresql.org/docs/18/sql-alterrole.html>`_,
+`GRANT <https://www.postgresql.org/docs/18/sql-grant.html>`_,
+`REVOKE <https://www.postgresql.org/docs/18/sql-revoke.html>`_,
+`ALTER DEFAULT PRIVILEGES <https://www.postgresql.org/docs/18/sql-alterdefaultprivileges.html>`_,
+`CREATE TRIGGER <https://www.postgresql.org/docs/18/sql-createtrigger.html>`_.

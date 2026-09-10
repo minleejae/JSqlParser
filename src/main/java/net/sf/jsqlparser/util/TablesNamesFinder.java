@@ -9,6 +9,10 @@
  */
 package net.sf.jsqlparser.util;
 
+import net.sf.jsqlparser.statement.role.CreateRole;
+import net.sf.jsqlparser.statement.role.AlterRole;
+import net.sf.jsqlparser.statement.grant.Revoke;
+import net.sf.jsqlparser.statement.grant.AlterDefaultPrivileges;
 import net.sf.jsqlparser.statement.create.type.CreateType;
 import net.sf.jsqlparser.statement.alter.AlterType;
 import net.sf.jsqlparser.statement.create.domain.CreateDomain;
@@ -1611,7 +1615,7 @@ public class TablesNamesFinder<Void>
 
     @Override
     public <S> Void visit(CreateTrigger createTrigger, S context) {
-        createTrigger.getTable().accept(this, context);
+        createTrigger.visit(t -> t.accept(this, context), e -> e.accept(this, context));
         if (createTrigger.getBody() != null) {
             createTrigger.getBody().accept(this, context);
         }
@@ -2060,6 +2064,7 @@ public class TablesNamesFinder<Void>
 
     @Override
     public <S> Void visit(Grant grant, S context) {
+        grant.getClause().visit(t -> t.accept(this, context), e -> e.accept(this, context));
         return null;
     }
 
@@ -2509,6 +2514,27 @@ public class TablesNamesFinder<Void>
     @Override
     public void visit(CreatePolicy createPolicy) {
         StatementVisitor.super.visit(createPolicy);
+    }
+
+    @Override
+    public <S> Void visit(CreateRole statement, S context) {
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterRole statement, S context) {
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(Revoke statement, S context) {
+        statement.getClause().visit(t -> t.accept(this, context), e -> e.accept(this, context));
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterDefaultPrivileges statement, S context) {
+        return null;
     }
 
     @Override
