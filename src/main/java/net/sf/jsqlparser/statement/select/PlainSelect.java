@@ -55,7 +55,8 @@ public class PlainSelect extends Select {
     private MySqlSqlCacheFlags mySqlCacheFlag = null;
     private String forXmlPath;
     private KSQLWindow ksqlWindow = null;
-    private boolean emitChanges = false;
+    private EmitMode emitMode = EmitMode.NONE;
+
     private List<WindowDefinition> windowDefinitions;
     /**
      * @see <a href=
@@ -67,6 +68,10 @@ public class PlainSelect extends Select {
     private boolean useWithNoLog = false;
     private Table intoTempTable = null;
     private List<UpdateSet> settings = null;
+
+    public enum EmitMode {
+        NONE, CHANGES, FINAL
+    }
 
     public PlainSelect() {}
 
@@ -500,12 +505,32 @@ public class PlainSelect extends Select {
         this.ksqlWindow = ksqlWindow;
     }
 
+    public EmitMode getEmitMode() {
+        return emitMode;
+    }
+
+    public void setEmitMode(EmitMode emitMode) {
+        this.emitMode = java.util.Objects.requireNonNull(emitMode, "emitMode");
+    }
+
+    public PlainSelect withEmitMode(EmitMode emitMode) {
+        setEmitMode(emitMode);
+        return this;
+    }
+
+    public StringBuilder appendEmitClauseTo(StringBuilder builder) {
+        if (emitMode != EmitMode.NONE) {
+            builder.append(" EMIT ").append(emitMode);
+        }
+        return builder;
+    }
+
     public boolean isEmitChanges() {
-        return emitChanges;
+        return emitMode == EmitMode.CHANGES;
     }
 
     public void setEmitChanges(boolean emitChanges) {
-        this.emitChanges = emitChanges;
+        emitMode = emitChanges ? EmitMode.CHANGES : EmitMode.NONE;
     }
 
     public List<WindowDefinition> getWindowDefinitions() {
@@ -634,9 +659,7 @@ public class PlainSelect extends Select {
             builder.append(windowDefinitions.stream().map(WindowDefinition::toString)
                     .collect(joining(", ")));
         }
-        if (emitChanges) {
-            builder.append(" EMIT CHANGES");
-        }
+        appendEmitClauseTo(builder);
         if (intoTempTable != null) {
             builder.append(" INTO TEMP ").append(intoTempTable);
         }

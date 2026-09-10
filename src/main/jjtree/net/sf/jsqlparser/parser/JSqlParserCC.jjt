@@ -1167,6 +1167,12 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         // String-literal alias:  SELECT col 'myAlias'
         if (kind == S_CHAR_LITERAL) return true;
 
+        // WITHIN followed by a duration starts a ksqlDB JOIN window.
+        if (kind == K_WITHIN && (getToken(2).kind == S_LONG
+                || getToken(2).kind == OPENING_BRACKET && getToken(3).kind == S_LONG)) {
+            return false;
+        }
+
         // OPTION (...) introduces a query hint clause, not an alias
         if (kind == K_OPTION && getToken(2).kind == OPENING_BRACKET) {
             return false;
@@ -6168,7 +6174,9 @@ PlainSelect PlainSelect() #PlainSelect:
     [ LOOKAHEAD(2) interpolateElements = InterpolateClause() { plainSelect.setInterpolate(interpolateElements); } ]
     [ LOOKAHEAD(2) forClause = ForClause() {plainSelect.setForClause(forClause);} ]
     [ LOOKAHEAD(2) optionClause = OptionClause() { plainSelect.setOption(optionClause); } ]
-    [ LOOKAHEAD(2) <K_EMIT> <K_CHANGES> { plainSelect.setEmitChanges(true); } ]
+    [ LOOKAHEAD(2) <K_EMIT>
+        ( <K_CHANGES> { plainSelect.setEmitMode(PlainSelect.EmitMode.CHANGES); }
+        | <K_FINAL> { plainSelect.setEmitMode(PlainSelect.EmitMode.FINAL); } ) ]
     // Parse the LIMIT row count once (this accepts a parenthesized subquery too), then
     // optionally attach ClickHouse's `LIMIT ... BY ...`. Checking BY right after the limit
     // expression avoids a numeric LOOKAHEAD, which cannot see past a long parenthesized
@@ -7180,7 +7188,7 @@ Join JoinerExpression() #JoinerExpression:
 
     [
         LOOKAHEAD(2) (
-                        [ <K_WITHIN> "(" joinWindow = JoinWindow() ")" {join.setJoinWindow(joinWindow);} ]
+                        [ <K_WITHIN> joinWindow = KSQLJoinWindowClause() {join.setJoinWindow(joinWindow);} ]
                         ( <K_ON> onExpression=Expression()  { join.addOnExpression(onExpression); }
                           ( LOOKAHEAD({ getToken(1).kind == K_ON && !isInsertOnConflictAhead() })  <K_ON> onExpression=Expression()  { join.addOnExpression(onExpression); } )*
                         )
@@ -7200,74 +7208,95 @@ Join JoinerExpression() #JoinerExpression:
 
 }
 
-KSQLJoinWindow JoinWindow():
+/** Shared duration parsing for JOIN, aggregation windows, and grace periods. */
+KSQLWindow.Duration KSQLDuration():
 {
-    KSQLJoinWindow retval = new KSQLJoinWindow();
-    boolean beforeAfter;
-    Token beforeDurationToken = null;
-    Token beforeTimeUnitToken = null;
-    Token afterDurationToken = null;
-    Token afterTimeUnitToken = null;
+    Token value;
+    Token unit;
 }
 {
-    beforeDurationToken=<S_LONG> (beforeTimeUnitToken=<S_IDENTIFIER> | beforeTimeUnitToken=<K_DATE_LITERAL>)
-    [ "," afterDurationToken=<S_LONG> (afterTimeUnitToken=<S_IDENTIFIER> | afterTimeUnitToken=<K_DATE_LITERAL>) ]
-    {
-        if (afterDurationToken == null) {
-            retval.setDuration(Long.parseLong(beforeDurationToken.image));
-            retval.setTimeUnit(KSQLWindow.TimeUnit.from(beforeTimeUnitToken.image));
-            retval.setBeforeAfterWindow(false);
-            return retval;
+    value=<S_LONG> ( unit=<S_IDENTIFIER> | unit=<K_DATE_LITERAL> )
+    { return new KSQLWindow.Duration(Long.parseLong(value.image), KSQLWindow.TimeUnit.from(unit.image)); }
+}
+
+KSQLWindow.Duration KSQLGracePeriod():
+{
+    KSQLWindow.Duration duration;
+}
+{
+    AccessKeyword("GRACE") AccessKeyword("PERIOD") duration=KSQLDuration()
+    { return duration; }
+}
+
+KSQLJoinWindow KSQLJoinWindowClause():
+{
+    KSQLJoinWindow window;
+    KSQLWindow.Duration duration;
+}
+{
+    (
+        "(" window=JoinWindow() ")"
+        |
+        duration=KSQLDuration() {
+            window = new KSQLJoinWindow().withDuration(duration.getValue())
+                    .withTimeUnit(duration.getTimeUnit()).withUsingBrackets(false);
         }
-        retval.setBeforeDuration(Long.parseLong(beforeDurationToken.image));
-        retval.setBeforeTimeUnit(KSQLWindow.TimeUnit.from(beforeTimeUnitToken.image));
-        retval.setAfterDuration(Long.parseLong(afterDurationToken.image));
-        retval.setAfterTimeUnit(KSQLWindow.TimeUnit.from(afterTimeUnitToken.image));
-        retval.setBeforeAfterWindow(true);
-        return retval;
+    )
+    [ LOOKAHEAD({ isKeywordAhead("GRACE") }) duration=KSQLGracePeriod() { window.setGracePeriod(duration); } ]
+    { return window; }
+}
+
+KSQLJoinWindow JoinWindow():
+{
+    KSQLJoinWindow window = new KSQLJoinWindow();
+    KSQLWindow.Duration before;
+    KSQLWindow.Duration after = null;
+}
+{
+    before=KSQLDuration()
+    [ "," after=KSQLDuration() ]
+    {
+        if (after == null) {
+            window.setDuration(before.getValue());
+            window.setTimeUnit(before.getTimeUnit());
+        } else {
+            window.setBeforeDuration(before.getValue());
+            window.setBeforeTimeUnit(before.getTimeUnit());
+            window.setAfterDuration(after.getValue());
+            window.setAfterTimeUnit(after.getTimeUnit());
+            window.setBeforeAfterWindow(true);
+        }
+        return window;
     }
 }
 
 KSQLWindow KSQLWindowClause():
 {
-    KSQLWindow retval = null;
-    Token sizeDurationToken = null;
-    Token sizeTimeUnitToken = null;
-    Token advanceDurationToken = null;
-    Token advanceTimeUnitToken = null;
+    KSQLWindow window = new KSQLWindow();
+    KSQLWindow.Duration size;
+    KSQLWindow.Duration advance;
+    KSQLWindow.Duration grace;
 }
 {
     <K_WINDOW>
-    {
-        retval=new KSQLWindow();
-        retval.setHoppingWindow(false);
-        retval.setSessionWindow(false);
-        retval.setTumblingWindow(false);
-    }
     (
-        <K_HOPPING> "("
-            <K_SIZE> sizeDurationToken=<S_LONG> sizeTimeUnitToken=<S_IDENTIFIER> ","
-            <K_ADVANCE> <K_BY> advanceDurationToken=<S_LONG> advanceTimeUnitToken=<S_IDENTIFIER> ")"
-        {
-            retval.setHoppingWindow(true);
-        } |
-        <K_SESSION> "(" sizeDurationToken=<S_LONG> sizeTimeUnitToken=<S_IDENTIFIER> ")"
-        {
-            retval.setSessionWindow(true);
-        } |
-        <K_TUMBLING> "(" <K_SIZE> sizeDurationToken=<S_LONG> sizeTimeUnitToken=<S_IDENTIFIER> ")"
-        {
-            retval.setTumblingWindow(true);
+        <K_HOPPING> "(" <K_SIZE> size=KSQLDuration()
+            "," <K_ADVANCE> <K_BY> advance=KSQLDuration() {
+            window.setHoppingWindow(true);
+            window.setAdvanceDuration(advance.getValue());
+            window.setAdvanceTimeUnit(advance.getTimeUnit());
         }
+        |
+        <K_SESSION> "(" size=KSQLDuration() { window.setSessionWindow(true); }
+        |
+        <K_TUMBLING> "(" <K_SIZE> size=KSQLDuration() { window.setTumblingWindow(true); }
     )
+    [ "," grace=KSQLGracePeriod() { window.setGracePeriod(grace); } ]
+    ")"
     {
-            retval.setSizeDuration(Long.parseLong(sizeDurationToken.image));
-            retval.setSizeTimeUnit(KSQLWindow.TimeUnit.from(sizeTimeUnitToken.image));
-            if (advanceDurationToken != null) {
-                retval.setAdvanceDuration(Long.parseLong(advanceDurationToken.image));
-                retval.setAdvanceTimeUnit(KSQLWindow.TimeUnit.from(advanceTimeUnitToken.image));
-            }
-            return retval;
+        window.setSizeDuration(size.getValue());
+        window.setSizeTimeUnit(size.getTimeUnit());
+        return window;
     }
 }
 

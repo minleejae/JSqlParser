@@ -21,6 +21,47 @@ public class KSQLWindow extends ASTNodeAccessImpl {
     private TimeUnit sizeTimeUnit;
     private long advanceDuration;
     private TimeUnit advanceTimeUnit;
+    private Duration gracePeriod;
+
+    /** A non-negative duration with its SQL time unit, including an explicit zero. */
+    public static final class Duration implements java.io.Serializable {
+        private final long value;
+        private final TimeUnit timeUnit;
+
+        public Duration(long value, TimeUnit timeUnit) {
+            if (value < 0) {
+                throw new IllegalArgumentException("Duration must not be negative");
+            }
+            this.value = value;
+            this.timeUnit = java.util.Objects.requireNonNull(timeUnit, "timeUnit");
+        }
+
+        public long getValue() {
+            return value;
+        }
+
+        public TimeUnit getTimeUnit() {
+            return timeUnit;
+        }
+
+        @Override
+        public String toString() {
+            return value + " " + timeUnit;
+        }
+    }
+
+    public Duration getGracePeriod() {
+        return gracePeriod;
+    }
+
+    public void setGracePeriod(Duration gracePeriod) {
+        this.gracePeriod = gracePeriod;
+    }
+
+    public KSQLWindow withGracePeriod(Duration gracePeriod) {
+        setGracePeriod(gracePeriod);
+        return this;
+    }
 
     public KSQLWindow() {}
 
@@ -82,14 +123,20 @@ public class KSQLWindow extends ASTNodeAccessImpl {
 
     @Override
     public String toString() {
+        StringBuilder builder = new StringBuilder();
         if (isHoppingWindow()) {
-            return "HOPPING (" + "SIZE " + sizeDuration + " " + sizeTimeUnit + ", " +
-                    "ADVANCE BY " + advanceDuration + " " + advanceTimeUnit + ")";
+            builder.append("HOPPING (SIZE ").append(sizeDuration).append(' ').append(sizeTimeUnit)
+                    .append(", ADVANCE BY ").append(advanceDuration).append(' ')
+                    .append(advanceTimeUnit);
         } else if (isSessionWindow()) {
-            return "SESSION (" + sizeDuration + " " + sizeTimeUnit + ")";
+            builder.append("SESSION (").append(sizeDuration).append(' ').append(sizeTimeUnit);
         } else {
-            return "TUMBLING (" + "SIZE " + sizeDuration + " " + sizeTimeUnit + ")";
+            builder.append("TUMBLING (SIZE ").append(sizeDuration).append(' ').append(sizeTimeUnit);
         }
+        if (gracePeriod != null) {
+            builder.append(", GRACE PERIOD ").append(gracePeriod);
+        }
+        return builder.append(')').toString();
     }
 
     public KSQLWindow withSizeDuration(long sizeDuration) {

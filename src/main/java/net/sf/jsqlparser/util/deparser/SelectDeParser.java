@@ -354,9 +354,7 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
             builder.append(plainSelect.getOption());
         }
 
-        if (plainSelect.isEmitChanges()) {
-            builder.append(" EMIT CHANGES");
-        }
+        plainSelect.appendEmitClauseTo(builder);
         if (plainSelect.getLimitBy() != null) {
             new LimitDeparser(expressionVisitor, builder).deParse(plainSelect.getLimitBy());
         }
