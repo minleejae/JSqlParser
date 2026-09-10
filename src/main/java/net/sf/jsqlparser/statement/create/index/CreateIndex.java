@@ -142,13 +142,23 @@ public class CreateIndex implements Statement {
 
     /** Shared rendering for the statement model and CreateIndexDeParser. */
     public StringBuilder appendTo(StringBuilder buffer) {
-        buffer.append("CREATE ");
-
-        if (index.getType() != null) {
-            buffer.append(index.getType());
-            buffer.append(" ");
+        appendIndexHeader(buffer);
+        appendIndexTarget(buffer);
+        appendIndexColumns(buffer);
+        appendPostgreSqlTail(buffer);
+        if (tailParameters != null) {
+            for (String param : tailParameters) {
+                buffer.append(" ").append(param);
+            }
         }
+        return buffer;
+    }
 
+    private void appendIndexHeader(StringBuilder buffer) {
+        buffer.append("CREATE ");
+        if (index.getType() != null) {
+            buffer.append(index.getType()).append(" ");
+        }
         buffer.append("INDEX ");
         if (concurrently) {
             buffer.append("CONCURRENTLY ");
@@ -159,40 +169,30 @@ public class CreateIndex implements Statement {
         if (index.getName() != null) {
             buffer.append(index.getName()).append(" ");
         }
+    }
 
+    private void appendIndexTarget(StringBuilder buffer) {
         if (index.getUsing() != null && isIndexTypeBeforeOn()) {
             buffer.append("USING ").append(index.getUsing()).append(" ");
         }
-
         buffer.append("ON ");
         if (only) {
             buffer.append("ONLY ");
         }
         buffer.append(table.getFullyQualifiedName());
-
         if (index.getUsing() != null && !isIndexTypeBeforeOn()) {
-            buffer.append(" USING ");
-            buffer.append(index.getUsing());
+            buffer.append(" USING ").append(index.getUsing());
         }
+    }
 
+    private void appendIndexColumns(StringBuilder buffer) {
         if (index.getColumnsNames() != null) {
             buffer.append(" (");
-
-            buffer.append(
-                    index.getColumns().stream()
-                            .map(Index.ColumnParams::toString)
-                            .collect(joining(", ")));
-
+            buffer.append(index.getColumns().stream()
+                    .map(Index.ColumnParams::toString)
+                    .collect(joining(", ")));
             buffer.append(")");
-
         }
-        appendPostgreSqlTail(buffer);
-        if (tailParameters != null) {
-            for (String param : tailParameters) {
-                buffer.append(" ").append(param);
-            }
-        }
-        return buffer;
     }
 
     private void appendPostgreSqlTail(StringBuilder buffer) {
