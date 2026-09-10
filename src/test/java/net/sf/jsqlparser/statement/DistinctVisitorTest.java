@@ -57,6 +57,17 @@ class DistinctVisitorTest {
         assertThat(select.toString()).isEqualTo("SELECT DISTINCT id FROM foo");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"SELECT DISTINCT unproven(id) FROM foo",
+            "SELECT * FROM (SELECT DISTINCT unproven(id) FROM foo) x",
+            "WITH x AS (SELECT DISTINCT unproven(id) FROM foo) SELECT * FROM x"})
+    void plainDistinctStillReportsUnprovenFunctions(String sql) throws JSQLParserException {
+        StatementFeatures features = CCJSqlParserUtil.parse(sql).getFeatures(n -> false);
+        assertThat(features.getUnresolvedReferences()).containsExactly("unproven");
+        assertThat(features.mayModifyData()).isTrue();
+        assertThat(features.modifiesData()).isFalse();
+    }
+
     @Test
     void selectAndOutputItemsKeepCallbackOrderAndContext() throws JSQLParserException {
         List<String> seen = new ArrayList<>();
