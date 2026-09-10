@@ -809,6 +809,12 @@ public enum Feature {
     allowDoubleQuotedStrings(false),
 
     /**
+     * Recognizes PostgreSQL $tag$...$tag$ literals. Disable for dialects where these spellings are
+     * unquoted identifiers. Untagged $$ literals are unaffected.
+     */
+    allowDollarQuotedStringTags(true),
+
+    /**
      * concatenates adjacent String Literals: NEWLINE when separated by whitespace with at least one
      * newline (the SQL standard and PostgreSQL), WHITESPACE across any whitespace (GoogleSQL,
      * Spark/Databricks); OFF by default, where the second literal stays an alias (MySQL, SQL

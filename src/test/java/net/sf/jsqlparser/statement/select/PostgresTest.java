@@ -108,8 +108,6 @@ public class PostgresTest {
     }
 
     @Test
-    @Disabled
-    // wip
     void testDollarQuotedText() throws JSQLParserException {
         String sqlStr = "SELECT $tag$This\nis\na\nselect\ntest\n$tag$ from dual where a=b";
         PlainSelect st = (PlainSelect) CCJSqlParserUtil.parse(sqlStr);

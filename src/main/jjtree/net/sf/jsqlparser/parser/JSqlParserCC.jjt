@@ -1664,38 +1664,42 @@ TOKEN_MGR_DECLS : {
 		return -1;
 	}
 
-    private static boolean endsWithDelimiter(Deque<Character> windowQueue, String delimiter) {
-        if (windowQueue.size() != delimiter.length()) {
-            return false;
-        }
-
-        int i = 0;
-        for (char ch : windowQueue) {
-            if (ch != delimiter.charAt(i++)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
+    /** Scans a literal in linear time without tokenizing or rebuilding its whitespace. */
     public void consumeDollarQuotedString(String closingQuote) {
-        Deque<Character> windowQueue = new ArrayDeque<Character>();
-        int delimiterLength = closingQuote.length();
-
+        int[] prefix = new int[closingQuote.length()];
+        for (int i = 1, matched = 0; i < closingQuote.length(); i++) {
+            while (matched > 0 && closingQuote.charAt(i) != closingQuote.charAt(matched)) {
+                matched = prefix[matched - 1];
+            }
+            if (closingQuote.charAt(i) == closingQuote.charAt(matched)) {
+                matched++;
+            }
+            prefix[i] = matched;
+        }
         try {
-            while (true) {
+            int matched = 0;
+            while (matched < closingQuote.length()) {
                 char ch = input_stream.readChar();
-                windowQueue.addLast(ch);
-                if (windowQueue.size() > delimiterLength) {
-                    windowQueue.removeFirst();
+                while (matched > 0 && ch != closingQuote.charAt(matched)) {
+                    matched = prefix[matched - 1];
                 }
-                if (endsWithDelimiter(windowQueue, closingQuote)) {
-                    return;
+                if (ch == closingQuote.charAt(matched)) {
+                    matched++;
                 }
             }
         } catch (java.io.IOException e) {
             reportError(Math.max(closingQuote.length(), input_stream.GetImage().length()));
         }
+    }
+
+    /** Rewinds any identifier suffix consumed by longest-match lexing before scanning the body. */
+    private void consumeDollarQuotedToken(Token token, String delimiter) {
+        input_stream.backup(token.image.length() - delimiter.length());
+        consumeDollarQuotedString(delimiter);
+        token.image = input_stream.GetImage();
+        token.kind = charLiteralIndex;
+        token.endLine = input_stream.getEndLine();
+        token.endColumn = input_stream.getEndColumn();
     }
 
     /**
@@ -2407,9 +2411,7 @@ TOKEN:
 |
 <S_DOLLAR_QUOTED_STRING: "$$">
     {
-        consumeDollarQuotedString(matchedToken.image);
-        matchedToken.image = input_stream.GetImage();
-        matchedToken.kind = charLiteralIndex;
+        consumeDollarQuotedToken(matchedToken, matchedToken.image);
     }
 |
 // Bare `#` as a binary operator (PostgreSQL bitwise XOR / geometric
@@ -2420,6 +2422,13 @@ TOKEN:
 |
 <S_IDENTIFIER: (<LETTER> (<PART_LETTER>)*) | "$" | ("$" <PART_LETTER_NO_DOLLAR> (<PART_LETTER>)*)>
 {
+    if (matchedToken.image.charAt(0) == '$'
+            && Boolean.TRUE.equals(configuration.getValue(Feature.allowDollarQuotedStringTags))) {
+        String delimiter = StringValue.getDollarQuoteDelimiter(matchedToken.image);
+        if (delimiter != null) {
+            consumeDollarQuotedToken(matchedToken, delimiter);
+        }
+    }
     // MySQL `#` line comments (#2499): under the flag an unquoted identifier
     // ends at its first `#`, the rest of the line becomes a comment via the
     // stream-level substitution (real MySQL reads `42#24` as `42` plus
@@ -2428,7 +2437,7 @@ TOKEN:
     // that never opted in (the stream is only wired through the feature
     // consumers / withConfiguration); getValue avoids the String-based
     // getAsBoolean roundtrip
-    if (input_stream.featureConfiguration != null
+    if (matchedToken.kind == S_IDENTIFIER && input_stream.featureConfiguration != null
             && Boolean.TRUE.equals(configuration.getValue(Feature.allowHashLineComments))) {
         int hashIndex = matchedToken.image.indexOf('#');
         if (hashIndex > 0) {
@@ -16680,7 +16689,7 @@ List<String> captureFunctionBody() {
         tokens.add(tok.image);
     }
     foundEnd |= (tok.kind == K_END)
-        || ( tok.image.trim().startsWith("$$") && tok.image.trim().endsWith("$$")) ;
+        || (tok.kind == S_CHAR_LITERAL && StringValue.getDollarQuoteDelimiter(tok.image) != null);
 
     tok = getNextToken();
   }

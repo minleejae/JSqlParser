@@ -143,6 +143,11 @@ public abstract class AbstractJSqlParser<P> {
         return withFeature(Feature.allowBackslashEscapeCharacter, allowBackslashEscapeCharacter);
     }
 
+    /** Controls tagged dollar quotes; false preserves dollar-containing identifier spellings. */
+    public P withDollarQuotedStringTags(boolean allowDollarQuotedStringTags) {
+        return withFeature(Feature.allowDollarQuotedStringTags, allowDollarQuotedStringTags);
+    }
+
     public P withDoubleQuotedStrings() {
         return withFeature(Feature.allowDoubleQuotedStrings, true);
     }

@@ -148,6 +148,10 @@ Beyond statement shapes, the grammar handles nested sub-selects, bind parameters
 array-literal ambiguity. The complete reference is on the
 [syntax page](https://jsqlparser.github.io/JSqlParser/syntax.html).
 
+PostgreSQL dollar-quoted strings, including `$tag$…$tag$`, retain their delimiter and
+literal body in `StringValue`. For dialects that use the same spelling as an unquoted
+identifier, `parser.withDollarQuotedStringTags(false)` retains identifier parsing.
+
 ## Statement classification
 
 Any parsed statement can say what it actually does — no second parse, no visitor to write:

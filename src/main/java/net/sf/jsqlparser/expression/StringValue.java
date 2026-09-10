@@ -42,10 +42,14 @@ public final class StringValue extends ASTNodeAccessImpl implements Expression {
             value = escapedValue.substring(1, escapedValue.length() - 1);
             quoteStr = "\"";
             return;
-        } else if (escapedValue.length() >= 4 && escapedValue.startsWith("$$")
-                && escapedValue.endsWith("$$")) {
-            value = escapedValue.substring(2, escapedValue.length() - 2);
-            quoteStr = "$$";
+        }
+
+        String delimiter = getDollarQuoteDelimiter(escapedValue);
+        if (delimiter != null && escapedValue.length() >= 2 * delimiter.length()
+                && escapedValue.endsWith(delimiter)) {
+            quoteStr = delimiter;
+            value = escapedValue.substring(delimiter.length(),
+                    escapedValue.length() - delimiter.length());
             return;
         }
 
@@ -62,6 +66,32 @@ public final class StringValue extends ASTNodeAccessImpl implements Expression {
         }
 
         value = escapedValue;
+    }
+
+    /**
+     * Returns the opening PostgreSQL dollar-quote delimiter, or null if there is none. A tag
+     * follows unquoted identifier rules, excluding dollar signs. This method does not require the
+     * closing delimiter or inspect the body.
+     */
+    public static String getDollarQuoteDelimiter(String text) {
+        if (text == null || text.length() < 2 || text.charAt(0) != '$') {
+            return null;
+        }
+        int end = text.indexOf('$', 1);
+        if (end < 0) {
+            return null;
+        }
+        for (int i = 1; i < end;) {
+            int character = text.codePointAt(i);
+            boolean valid =
+                    i == 1 ? Character.isUnicodeIdentifierStart(character) || character == '_'
+                            : Character.isUnicodeIdentifierPart(character);
+            if (!valid) {
+                return null;
+            }
+            i += Character.charCount(character);
+        }
+        return text.substring(0, end + 1);
     }
 
     public String getValue() {
@@ -90,6 +120,9 @@ public final class StringValue extends ASTNodeAccessImpl implements Expression {
     }
 
     public String getNotExcapedValue() {
+        if (quoteStr != null && quoteStr.startsWith("$")) {
+            return value;
+        }
         StringBuilder buffer = new StringBuilder(value);
         int index = 0;
         int deletesNum = 0;
