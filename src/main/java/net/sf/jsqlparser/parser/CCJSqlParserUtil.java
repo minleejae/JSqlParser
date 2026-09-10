@@ -429,10 +429,11 @@ public final class CCJSqlParserUtil {
         }
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
-        final Statements statements = parseStatements(sqls, executorService, consumer);
-        executorService.shutdown();
-
-        return statements;
+        try {
+            return parseStatements(sqls, executorService, consumer);
+        } finally {
+            executorService.shutdown();
+        }
     }
 
     /**
@@ -447,7 +448,6 @@ public final class CCJSqlParserUtil {
             return null;
         }
 
-        Statements statements = null;
         CCJSqlParser parser = newParser(sqls);
         if (consumer != null) {
             consumer.accept(parser);
@@ -457,7 +457,7 @@ public final class CCJSqlParserUtil {
 
         // first, try to parse fast and simple
         try {
-            statements = parseStatements(parser.withAllowComplexParsing(false), executorService);
+            return parseStatements(parser.withAllowComplexParsing(false), executorService);
         } catch (JSQLParserException ex) {
             // when fast simple parsing fails, try complex parsing but only if it has a chance to
             // succeed
@@ -468,10 +468,10 @@ public final class CCJSqlParserUtil {
                 if (consumer != null) {
                     consumer.accept(parser);
                 }
-                statements = parseStatements(parser.withAllowComplexParsing(true), executorService);
+                return parseStatements(parser.withAllowComplexParsing(true), executorService);
             }
+            throw ex;
         }
-        return statements;
     }
 
     /**
