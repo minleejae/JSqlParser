@@ -141,6 +141,7 @@ and missing syntax gets added on demand — [open an issue](https://github.com/J
 | **DML** | `INSERT` · `UPDATE` · `UPSERT` · `MERGE` · `DELETE` · `TRUNCATE TABLE` |
 | **DDL** | `CREATE …` · `ALTER …` · `DROP …` |
 | **PostgreSQL RLS** | `CREATE POLICY` · `ALTER TABLE … ENABLE`/`DISABLE`/`FORCE`/`NO FORCE ROW LEVEL SECURITY` |
+| **Informix constraints** | `ALTER TABLE … ADD CONSTRAINT` with trailing constraint names for primary, unique, foreign and check constraints |
 | **Salesforce SOQL** | `INCLUDES` · `EXCLUDES` |
 
 Beyond statement shapes, the grammar handles nested sub-selects, bind parameters (`?`,

@@ -14403,6 +14403,36 @@ DefaultConstraint DefaultConstraintSpec():
     { return constraint; }
 }
 
+/** Parses Informix's ADD CONSTRAINT definition [CONSTRAINT name]. */
+NamedConstraint InformixConstraint():
+{
+    NamedConstraint constraint;
+    Token type;
+    List<String> columns;
+    String name;
+}
+{
+    <K_CONSTRAINT>
+    (
+        ( type=<K_PRIMARY> <K_KEY> | type=<K_UNIQUE> )
+        columns=ColumnsNamesList() {
+            constraint = new NamedConstraint()
+                    .withType(type.kind == K_PRIMARY ? "PRIMARY KEY" : type.image)
+                    .withColumnsNames(columns);
+        }
+        |
+        constraint=ForeignKeySpec(null)
+        |
+        constraint=CheckConstraintSpec(null)
+    )
+    [ <K_CONSTRAINT> name=RelObjectName() { constraint.setName(name); } ]
+    {
+        constraint.setUseConstraintKeyword(true);
+        constraint.setConstraintNamePosition(NamedConstraint.ConstraintNamePosition.AFTER);
+        return constraint;
+    }
+}
+
 /**
  * Parses ADD/ALTER CONSTRAINT clause within AlterExpression.
  * Handles: CONSTRAINT [UNIQUE [KEY|INDEX]] name columns
@@ -14700,6 +14730,14 @@ AlterExpression AlterExpressionAddAlterModify():
         tk=<K_INDEX> sk3=RelObjectName() IndexOptionList(indexSpec) {
             index = new Index().withIndexKeyword(tk.image).withName(sk3)
                     .withKind(Index.Kind.INDEX).withIndexSpec(indexSpec);
+            alterExp.setIndex(index);
+        }
+        |
+        LOOKAHEAD(<K_CONSTRAINT> (<K_PRIMARY> <K_KEY> | <K_FOREIGN> <K_KEY>
+                | <K_UNIQUE> | <K_CHECK>) "(")
+        index=InformixConstraint() {
+            requireDdlSyntax(alterExp.getOperation() == AlterOperation.ADD,
+                    "Informix constraint definitions require ADD");
             alterExp.setIndex(index);
         }
         |

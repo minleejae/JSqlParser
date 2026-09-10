@@ -18,6 +18,45 @@ public class NamedConstraint extends Index {
 
     private String indexName;
     private boolean useConstraintKeyword;
+    private ConstraintNamePosition constraintNamePosition = ConstraintNamePosition.BEFORE;
+
+    /** Position of the constraint symbol relative to its definition. */
+    public enum ConstraintNamePosition {
+        BEFORE, AFTER
+    }
+
+    public ConstraintNamePosition getConstraintNamePosition() {
+        return constraintNamePosition;
+    }
+
+    public void setConstraintNamePosition(ConstraintNamePosition position) {
+        constraintNamePosition = java.util.Objects.requireNonNull(position, "position");
+    }
+
+    public NamedConstraint withConstraintNamePosition(ConstraintNamePosition position) {
+        setConstraintNamePosition(position);
+        return this;
+    }
+
+    /** Appends the leading keyword and, for the usual syntax, the constraint name. */
+    public void appendConstraintPrefixTo(StringBuilder builder) {
+        boolean leadingName = getName() != null
+                && constraintNamePosition == ConstraintNamePosition.BEFORE;
+        if (useConstraintKeyword || leadingName) {
+            builder.append("CONSTRAINT");
+            if (leadingName) {
+                builder.append(' ').append(getName());
+            }
+            builder.append(' ');
+        }
+    }
+
+    /** Appends an Informix constraint name after the complete constraint definition. */
+    public void appendConstraintSuffixTo(StringBuilder builder) {
+        if (constraintNamePosition == ConstraintNamePosition.AFTER && getName() != null) {
+            builder.append(" CONSTRAINT ").append(getName());
+        }
+    }
 
     /**
      * Returns the optional index name declared after the constraint type. This is distinct from
@@ -44,9 +83,6 @@ public class NamedConstraint extends Index {
     @Override
     public String toString() {
         String idxSpecText = PlainSelect.getStringList(getIndexSpec(), false, false);
-        String head = useConstraintKeyword || getName() != null
-                ? "CONSTRAINT" + (getName() != null ? " " + getName() : "") + " "
-                : "";
         String keyword = getIndexKeyword() != null
                 && !getType().toUpperCase(java.util.Locale.ROOT)
                         .endsWith(getIndexKeyword().toUpperCase(java.util.Locale.ROOT))
@@ -61,9 +97,12 @@ public class NamedConstraint extends Index {
                         : " " + PlainSelect.getStringList(getColumnsNames(), true, true))
                 +
                 (!"".equals(idxSpecText) ? " " + idxSpecText : "");
-        StringBuilder sql = new StringBuilder(head).append(tail);
+        StringBuilder sql = new StringBuilder();
+        appendConstraintPrefixTo(sql);
+        sql.append(tail);
         appendConstraintOptionsTo(sql);
         if (getKind() != Kind.FOREIGN_KEY) {
+            appendConstraintSuffixTo(sql);
             appendConstraintAttributesTo(sql);
         }
         return sql.toString();

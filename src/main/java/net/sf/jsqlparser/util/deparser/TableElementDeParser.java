@@ -94,13 +94,7 @@ public class TableElementDeParser extends AbstractDeParser<TableElement> {
     }
 
     private void deParseCheck(CheckConstraint constraint) {
-        if (constraint.getName() != null || constraint.isUseConstraintKeyword()) {
-            builder.append("CONSTRAINT");
-            if (constraint.getName() != null) {
-                builder.append(' ').append(constraint.getName());
-            }
-            builder.append(' ');
-        }
+        constraint.appendConstraintPrefixTo(builder);
         builder.append("CHECK (");
         if (constraint.getExpression() != null) {
             constraint.getExpression().accept(expressionVisitor, null);
@@ -111,6 +105,7 @@ public class TableElementDeParser extends AbstractDeParser<TableElement> {
         if (constraint.getEnforced() != null) {
             builder.append(constraint.getEnforced() ? " ENFORCED" : " NOT ENFORCED");
         }
+        constraint.appendConstraintSuffixTo(builder);
         constraint.appendConstraintAttributesTo(builder);
     }
 }
