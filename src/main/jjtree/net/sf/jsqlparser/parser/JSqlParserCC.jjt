@@ -4637,7 +4637,7 @@ Insert Insert():
                 <K_OVERWRITE> <K_TABLE> { insert.setOverwrite(true); insert.setTableKeyword(true); }
                 | <K_INTO> [ LOOKAHEAD(2) <K_TABLE> { insert.setTableKeyword(true); }]
                 )
-            ]   table=Table()
+            ]   table=TableReference()
             [ LOOKAHEAD(2) <K_PARTITION> "(" partitions=Partitions() ")" ]
 
             [ LOOKAHEAD({ isAliasAhead() }) [<K_AS> { useAs = true; } ] name=RelObjectName() { table.setAlias(new Alias(name,useAs)); }]
@@ -5264,13 +5264,39 @@ Table Table() #TableName :
     }
 }
 
+/** A table source or DML target; catalog-only DDL continues to use Table(). */
+Table TableReference() #void :
+{
+    Table table;
+}
+{
+    ( table=TableVariable() | table=Table() )
+    { return table; }
+}
+
+Table TableVariable() #TableName :
+{
+    Token variable;
+    Table table;
+}
+{
+    variable=<S_AT_IDENTIFIER>
+    {
+        requireAccessSyntax(!variable.image.startsWith("@@"),
+                "A table variable must be a local variable");
+        table = new Table(variable.image, false).withTableVariable(true);
+        linkAST(table, jjtThis);
+        return table;
+    }
+}
+
 Table TableWithAlias():
 {
     Table table = null;
     Alias alias = null;
 }
 {
-    table=Table()
+    table=TableReference()
     [ LOOKAHEAD({ isAliasAhead() }) alias=Alias() { table.setAlias(alias); }]
     { return table; }
 }
@@ -5278,12 +5304,10 @@ Table TableWithAlias():
 Table TableWithAliasAndMysqlIndexHint():
 {
     Table table = null;
-    Alias alias = null;
     MySQLIndexHint indexHint = null;
 }
 {
-    table=Table()
-    [ LOOKAHEAD({ isAliasAhead() }) alias=Alias() { table.setAlias(alias); } ]
+    table=TableWithAlias()
     [ LOOKAHEAD(2) indexHint=MySQLIndexHint() { table.setHint(indexHint); } ]
     { return table; }
 }
@@ -7045,7 +7069,7 @@ FromItem FromItem() #FromItem:
             || (getToken(1).kind == K_LATERAL && getToken(2).kind != OPENING_BRACKET) })
         fromItem=TableFunction()
         |
-        LOOKAHEAD(3) fromItem=Table()
+        LOOKAHEAD(3) fromItem=TableReference()
         |
         LOOKAHEAD({ isNestedSetOperationAhead() }) (
             fromItem=ParenthesedSelect()

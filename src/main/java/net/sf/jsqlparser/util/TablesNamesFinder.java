@@ -510,7 +510,9 @@ public class TablesNamesFinder<Void>
     @Override
     public <S> Void visit(Table table, S context) {
         String tableWholeName = extractTableName(table);
-        if (!otherItemNames.contains(tableWholeName)) {
+        if (table.isTableVariable()) {
+            otherItemNames.add(tableWholeName);
+        } else if (!otherItemNames.contains(tableWholeName)) {
             tables.add(tableWholeName);
         }
         if (table.getPivot() != null) {

@@ -84,6 +84,7 @@ public class FeaturesAllowed implements FeatureSetValidation, ModifyableFeatureS
             Feature.orderBy,
             Feature.orderByNullOrdering,
             Feature.tableStatement,
+            Feature.tableVariable,
 
             Feature.function).unmodifyable();
     /**

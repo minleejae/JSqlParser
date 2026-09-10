@@ -239,8 +239,12 @@ public class SelectValidator extends AbstractValidator<SelectItem<?>>
 
     @Override
     public <S> Void visit(Table table, S context) {
-        validateNameWithAlias(NamedObject.table, table.getFullyQualifiedName(),
-                ValidationUtil.getAlias(table.getAlias()));
+        if (table.isTableVariable()) {
+            validateFeature(Feature.tableVariable);
+        } else {
+            validateNameWithAlias(NamedObject.table, table.getFullyQualifiedName(),
+                    ValidationUtil.getAlias(table.getAlias()));
+        }
 
         validateOptional(table.getPivot(), p -> p.accept(this, context));
         validateOptional(table.getUnPivot(), up -> up.accept(this, context));

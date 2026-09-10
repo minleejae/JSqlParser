@@ -44,6 +44,8 @@ public class Table extends ASTNodeAccessImpl
 
     private List<String> partDelimiters = new ArrayList<>();
 
+    private boolean tableVariable;
+
     // holds the various `time travel` syntax for BigQuery, RedShift, Snowflake or RedShift
     private String timeTravelStr = null;
 
@@ -66,6 +68,20 @@ public class Table extends ASTNodeAccessImpl
     private Table resolvedTable = null;
 
     public Table() {}
+
+    /** Whether this reference names a local table variable rather than a catalog table. */
+    public boolean isTableVariable() {
+        return tableVariable;
+    }
+
+    public void setTableVariable(boolean tableVariable) {
+        this.tableVariable = tableVariable;
+    }
+
+    public Table withTableVariable(boolean tableVariable) {
+        setTableVariable(tableVariable);
+        return this;
+    }
 
     /**
      * Instantiates a new Table.
@@ -527,6 +543,9 @@ public class Table extends ASTNodeAccessImpl
      * @return the provided table
      */
     public Table setUnsetCatalogAndSchema(String currentCatalogName, String currentSchemaName) {
+        if (tableVariable) {
+            return this;
+        }
         String databaseName = getDatabaseName();
         if (databaseName == null || databaseName.isEmpty()) {
             setDatabaseName(currentCatalogName);
@@ -561,6 +580,7 @@ public class Table extends ASTNodeAccessImpl
     @Override
     public Table clone() {
         Table clone = new Table(this.getFullyQualifiedName());
+        clone.setTableVariable(tableVariable);
         clone.setResolvedTable(this.resolvedTable != null ? this.resolvedTable.clone() : null);
         return clone;
     }

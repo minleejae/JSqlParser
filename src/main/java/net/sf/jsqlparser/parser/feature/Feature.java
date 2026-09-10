@@ -670,6 +670,9 @@ public enum Feature {
      * @see DeclareStatement
      */
     declare,
+
+    /** SQL Server local table variables in queries and DML targets. */
+    tableVariable,
     /**
      * @see SetStatement
      */
