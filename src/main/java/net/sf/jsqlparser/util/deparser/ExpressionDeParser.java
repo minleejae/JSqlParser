@@ -1420,6 +1420,12 @@ public class ExpressionDeParser extends AbstractDeParser<Expression>
     }
 
     @Override
+    public <S> StringBuilder visit(
+            net.sf.jsqlparser.statement.execute.ExecuteArgument argument, S context) {
+        return argument.appendTo(builder, expression -> expression.accept(this, context));
+    }
+
+    @Override
     public <S> StringBuilder visit(NumericBind bind, S context) {
         builder.append(bind.toString());
         return builder;

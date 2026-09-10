@@ -9,9 +9,7 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
-import java.util.List;
 
-import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.statement.execute.Execute;
 
@@ -27,24 +25,7 @@ public class ExecuteDeParser extends AbstractDeParser<Execute> {
 
     @Override
     public void deParse(Execute execute) {
-        builder.append(execute.getExecType().name()).append(" ").append(execute.getName());
-        if (execute.isParenthesis()) {
-            builder.append(" (");
-        } else if (execute.getExprList() != null) {
-            builder.append(" ");
-        }
-        if (execute.getExprList() != null) {
-            List<Expression> expressions = execute.getExprList().getExpressions();
-            for (int i = 0; i < expressions.size(); i++) {
-                if (i > 0) {
-                    builder.append(", ");
-                }
-                expressions.get(i).accept(expressionVisitor, null);
-            }
-        }
-        if (execute.isParenthesis()) {
-            builder.append(")");
-        }
+        execute.appendTo(builder, expression -> expression.accept(expressionVisitor, null));
     }
 
     public ExpressionVisitor<StringBuilder> getExpressionVisitor() {

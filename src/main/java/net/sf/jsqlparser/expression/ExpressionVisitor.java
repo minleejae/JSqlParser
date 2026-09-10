@@ -10,6 +10,7 @@
 package net.sf.jsqlparser.expression;
 
 import java.util.List;
+import net.sf.jsqlparser.statement.execute.ExecuteArgument;
 import net.sf.jsqlparser.expression.operators.arithmetic.Addition;
 import net.sf.jsqlparser.expression.operators.arithmetic.BitwiseAnd;
 import net.sf.jsqlparser.expression.operators.arithmetic.BitwiseLeftShift;
@@ -71,6 +72,10 @@ import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.update.UpdateSet;
 
 public interface ExpressionVisitor<T> {
+
+    default <S> T visit(ExecuteArgument argument, S context) {
+        return argument.getExpression().accept(this, context);
+    }
 
     default <S> T visitExpressions(ExpressionList<? extends Expression> expressions, S context) {
         if (expressions != null) {

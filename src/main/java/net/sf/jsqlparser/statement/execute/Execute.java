@@ -10,11 +10,13 @@
 package net.sf.jsqlparser.statement.execute;
 
 import java.util.Locale;
+import java.util.StringJoiner;
+import java.util.function.Consumer;
+import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.expression.operators.relational.ParenthesedExpressionList;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.StatementVisitor;
-import net.sf.jsqlparser.statement.select.PlainSelect;
 
 import java.util.List;
 
@@ -33,13 +35,11 @@ public class Execute implements Statement {
     }
 
     public void setName(List<String> names) {
+        StringJoiner qualifiedName = new StringJoiner(".");
         for (String item : names) {
-            if (this.name != null) {
-                this.name = this.name + "." + item;
-            } else {
-                this.name = item;
-            }
+            qualifiedName.add(item == null ? "" : item);
         }
+        this.name = qualifiedName.toString();
     }
 
     public ExpressionList getExprList() {
@@ -70,11 +70,29 @@ public class Execute implements Statement {
 
     @Override
     public String toString() {
-        return execType.name() + " " + name
-                + (exprList != null
-                        ? " " + PlainSelect.getStringList(exprList, true,
-                                exprList instanceof ParenthesedExpressionList)
-                        : "");
+        StringBuilder builder = new StringBuilder();
+        return appendTo(builder, builder::append).toString();
+    }
+
+    public StringBuilder appendTo(StringBuilder builder, Consumer<Expression> expressionPrinter) {
+        builder.append(execType.name()).append(' ').append(name);
+        if (exprList != null) {
+            builder.append(' ');
+            boolean brackets = exprList instanceof ParenthesedExpressionList;
+            if (brackets) {
+                builder.append('(');
+            }
+            for (int i = 0; i < exprList.size(); i++) {
+                if (i > 0) {
+                    builder.append(", ");
+                }
+                expressionPrinter.accept((Expression) exprList.get(i));
+            }
+            if (brackets) {
+                builder.append(')');
+            }
+        }
+        return builder;
     }
 
     public Execute withExecType(ExecType execType) {

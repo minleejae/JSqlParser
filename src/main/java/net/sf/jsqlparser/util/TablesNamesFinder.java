@@ -129,6 +129,7 @@ import net.sf.jsqlparser.statement.delete.Delete;
 import net.sf.jsqlparser.statement.delete.ParenthesedDelete;
 import net.sf.jsqlparser.statement.drop.Drop;
 import net.sf.jsqlparser.statement.execute.Execute;
+import net.sf.jsqlparser.statement.execute.ExecuteArgument;
 import net.sf.jsqlparser.statement.export.Export;
 import net.sf.jsqlparser.statement.grant.Grant;
 import net.sf.jsqlparser.statement.imprt.Import;
@@ -1694,6 +1695,11 @@ public class TablesNamesFinder<Void>
     public <S> Void visit(Execute execute, S context) {
         throwUnsupported(execute);
         return null;
+    }
+
+    @Override
+    public <S> Void visit(ExecuteArgument argument, S context) {
+        return argument.getExpression().accept(this, context);
     }
 
     @Override

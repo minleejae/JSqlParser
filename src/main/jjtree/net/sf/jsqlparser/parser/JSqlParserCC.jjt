@@ -126,6 +126,21 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
     // and must not be taken as the JSON path operator
     private int mapKeyDepth = 0;
 
+    private Expression createOutputArgument(Expression argument) throws ParseException {
+        Expression value = argument;
+        if (argument instanceof VariableAssignment) {
+            value = ((VariableAssignment) argument).getExpression();
+        } else if (argument instanceof EqualsTo
+                && ((EqualsTo) argument).getLeftExpression() instanceof UserVariable) {
+            value = ((EqualsTo) argument).getRightExpression();
+        }
+        if (!(value instanceof UserVariable || value instanceof JdbcParameter
+                || value instanceof JdbcNamedParameter)) {
+            throw new ParseException("An OUTPUT argument must be a variable or bind parameter");
+        }
+        return new net.sf.jsqlparser.statement.execute.ExecuteArgument(argument, true);
+    }
+
     private void linkAST(ASTNodeAccess access, Node node) {
         access.setASTNode(node);
         node.jjtSetValue(access);
@@ -10654,27 +10669,48 @@ EqualsTo VariableExpression(): {
 }
 
 Execute Execute(): {
-    Token token;
     ObjectNames funcName;
-    ExpressionList expressionList = null;
+    ExpressionList expressionList;
     Execute execute = new Execute();
-    List<Expression> namedExprList;
-    Expression expr;
 }
 {
     (<K_EXEC> { execute.setExecType(Execute.ExecType.EXEC); }
         | <K_EXECUTE> { execute.setExecType(Execute.ExecType.EXECUTE); }
         | <K_CALL> { execute.setExecType(Execute.ExecType.CALL); } )
 
-    funcName=RelObjectNames() { execute.setName(funcName.getNames()); }
+    // A colon starts a bind argument here; it must not join the procedure name.
+    funcName=ColumnIdentifier() { execute.setName(funcName.getNames()); }
+    [ LOOKAHEAD(2) expressionList=ExecuteArguments() { execute.setExprList(expressionList); } ]
+    { return execute; }
+}
 
+ExpressionList ExecuteArguments(): {
+    ExpressionList arguments = new ExpressionList();
+    Expression argument;
+}
+{
     (
-        LOOKAHEAD(2)  expressionList=ExpressionList() { execute.setExprList(expressionList); }
-    )?
+        LOOKAHEAD("(") arguments=ExpressionList()
+        |
+        argument=ExecuteArgument() { arguments.add(argument); }
+        ( "," argument=ExecuteArgument() { arguments.add(argument); } )*
+    )
+    { return arguments; }
+}
 
-    {
-        return execute;
-    }
+Expression ExecuteArgument(): {
+    Expression argument;
+    boolean output = false;
+}
+{
+    argument=Expression()
+    [
+        LOOKAHEAD({ isAccessKeywordAhead("OUTPUT") || isAccessKeywordAhead("OUT") })
+        ( <K_OUTPUT> | AccessKeyword("OUT") )
+        { output = true; }
+    ]
+    { return output ? createOutputArgument(argument) : argument; }
+
 }
 
 FullTextSearch FullTextSearch() : {
