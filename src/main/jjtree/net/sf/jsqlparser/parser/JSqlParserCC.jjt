@@ -11725,7 +11725,8 @@ CreateIndex CreateIndex():
     [ LOOKAHEAD(2) <K_TABLESPACE> tableSpace=RelObjectName()
         { createIndex.setTableSpace(tableSpace); } ]
     [ LOOKAHEAD(2) <K_WHERE> where=Expression() { createIndex.setWhere(where); } ]
-    ( LOOKAHEAD(2)  parameter=CreateParameter() { tailParameters.addAll(parameter); } )*
+    ( LOOKAHEAD(2, { getToken(1).kind != K_LOCK || getToken(2).kind != K_TABLE })
+        parameter=CreateIndexTailOption() { tailParameters.addAll(parameter); } )*
     {
         index.setColumns(colNames);
         createIndex.setIndex(index);
@@ -11733,6 +11734,35 @@ CreateIndex CreateIndex():
         createIndex.setTailParameters(tailParameters);
         return createIndex;
     }
+}
+
+List<String> CreateIndexTailOption():
+{
+    List<String> option;
+}
+{
+    (
+        LOOKAHEAD({ getToken(1).kind == K_ALGORITHM || getToken(1).kind == K_LOCK })
+        option=IndexAlgorithmOrLockOption()
+        |
+        option=CreateParameter()
+    )
+    { return option; }
+}
+
+// CREATE INDEX and DROP INDEX share MySQL's algorithm_option / lock_option syntax.
+// Keep the legacy token list, including optional equals signs and the original order.
+List<String> IndexAlgorithmOrLockOption():
+{
+    List<String> option = new ArrayList<String>();
+    Token keyword;
+    Token value;
+}
+{
+    ( keyword=<K_ALGORITHM> | keyword=<K_LOCK> ) { option.add(keyword.image); }
+    [ "=" { option.add("="); } ]
+    ( value=<K_DEFAULT> | value=<K_NONE> | value=<K_EXCLUSIVE> | value=<S_IDENTIFIER> )
+    { option.add(value.image); return option; }
 }
 
 List<String> ColumnDefinitionParameter(): {
@@ -13533,6 +13563,7 @@ Drop Drop():
     Table name;
     List<String> dropArgs = new ArrayList<String>();
     List<String> funcArgs = null;
+    List<String> indexOption;
     boolean useTemporary = false;
 }
 {
@@ -13569,6 +13600,10 @@ Drop Drop():
     ( "," name = Table() { drop.addNames(name); } )*
     [ LOOKAHEAD(2)  funcArgs = FuncArgsList() ]
     (
+        LOOKAHEAD({ getToken(1).kind == K_ALGORITHM
+                || (getToken(1).kind == K_LOCK && getToken(2).kind != K_TABLE) })
+        indexOption=IndexAlgorithmOrLockOption() { dropArgs.addAll(indexOption); }
+        |
         (
             tk=<S_IDENTIFIER> | tk=<K_CASCADE> | tk=<K_RESTRICT>
             // MySQL DROP INDEX accepts a trailing algorithm_option / lock_option,

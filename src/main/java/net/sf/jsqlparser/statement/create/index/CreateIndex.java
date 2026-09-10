@@ -137,8 +137,11 @@ public class CreateIndex implements Statement {
 
     @Override
     public String toString() {
-        StringBuilder buffer = new StringBuilder();
+        return appendTo(new StringBuilder()).toString();
+    }
 
+    /** Shared rendering for the statement model and CreateIndexDeParser. */
+    public StringBuilder appendTo(StringBuilder buffer) {
         buffer.append("CREATE ");
 
         if (index.getType() != null) {
@@ -182,16 +185,14 @@ public class CreateIndex implements Statement {
 
             buffer.append(")");
 
-            appendPostgreSqlTail(buffer);
-
-            if (tailParameters != null) {
-                for (String param : tailParameters) {
-                    buffer.append(" ").append(param);
-                }
+        }
+        appendPostgreSqlTail(buffer);
+        if (tailParameters != null) {
+            for (String param : tailParameters) {
+                buffer.append(" ").append(param);
             }
         }
-
-        return buffer.toString();
+        return buffer;
     }
 
     private void appendPostgreSqlTail(StringBuilder buffer) {
