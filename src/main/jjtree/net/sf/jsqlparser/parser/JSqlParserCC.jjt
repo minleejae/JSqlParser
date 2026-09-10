@@ -6279,6 +6279,7 @@ WithItem<?> WithItem() #WithItem:
     WithFunctionDeclaration withFunctionDeclaration = null;
     ParenthesedStatement statement = null;
     WithSearchClause withSearchClause = null;
+    WithCycleClause withCycleClause = null;
     WithItem<?> withItem;
 }
 {
@@ -6312,6 +6313,7 @@ WithItem<?> WithItem() #WithItem:
          )
      )
      [ withSearchClause = WithSearchClause() { withItem.setSearchClause(withSearchClause); } ]
+     [ withCycleClause = WithCycleClause() { withItem.setCycleClause(withCycleClause); } ]
      {
      return withItem;
      }
@@ -6340,6 +6342,24 @@ WithSearchClause WithSearchClause() #WithSearchClause:
                         : WithSearchClause.SearchOrder.DEPTH,
                 searchColumns, sequenceColumnName);
     }
+}
+
+WithCycleClause WithCycleClause() #WithCycleClause:
+{
+    WithCycleClause cycle = new WithCycleClause();
+    ExpressionList<Column> columns = new ExpressionList<Column>();
+    String name;
+    Expression value;
+}
+{
+    <K_CYCLE>
+    name=RelObjectName() { columns.add(new Column(name)); }
+    ( "," name=RelObjectName() { columns.add(new Column(name)); } )*
+    <K_SET> name=RelObjectName() { cycle.setMarkColumnName(name); }
+    [ <K_TO> value=Expression() { cycle.setMarkValue(value); }
+      <K_DEFAULT> value=Expression() { cycle.setMarkDefault(value); } ]
+    <K_USING> name=RelObjectName() { cycle.setPathColumnName(name); }
+    { return cycle.withCycleColumns(columns); }
 }
 
 WithFunctionDeclaration WithFunctionDeclaration() #WithFunctionDeclaration:
