@@ -12,6 +12,8 @@ package net.sf.jsqlparser.statement.select;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
 import net.sf.jsqlparser.expression.Function;
+import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.WindowDefinition;
 import net.sf.jsqlparser.statement.OutputClause;
 import net.sf.jsqlparser.statement.ParenthesedStatement;
 import net.sf.jsqlparser.statement.Statement;
@@ -197,9 +199,13 @@ public class SelectVisitorAdapter<T> implements SelectVisitor<T> {
         expressionVisitor.visitExpression(plainSelect.getHaving(), context);
         expressionVisitor.visitExpression(plainSelect.getQualify(), context);
 
-        // if (plainSelect.getWindowDefinitions() != null) {
-        // //@todo: implement
-        // }
+        if (plainSelect.getWindowDefinitions() != null) {
+            for (WindowDefinition window : plainSelect.getWindowDefinitions()) {
+                for (Expression expression : window.getAllExpressions()) {
+                    expressionVisitor.visitExpression(expression, context);
+                }
+            }
+        }
 
         Pivot pivot = plainSelect.getPivot();
         if (pivot != null) {
