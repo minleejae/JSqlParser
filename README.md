@@ -189,6 +189,9 @@ out. `is()` answers "did the grammar prove it", `may()` answers "could it be rul
 guard uses `may()` and a dispatcher uses `is()`. Function volatility is not a syntactic property,
 so anything the caller has not declared pure stays unproven and is listed by name.
 
+Legacy MySQL `GROUP BY ... ASC/DESC` is available with `Dialect.MYSQL` and the explicit
+`withLegacyMySqlGroupBy(true)` option; modern/default parsing keeps it disabled.
+
 ## Piped SQL
 
 Support is progressing for Piped SQL, which writes queries in the order they actually

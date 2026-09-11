@@ -872,3 +872,21 @@ References: `CREATE ROLE <https://www.postgresql.org/docs/18/sql-createrole.html
 `REVOKE <https://www.postgresql.org/docs/18/sql-revoke.html>`_,
 `ALTER DEFAULT PRIVILEGES <https://www.postgresql.org/docs/18/sql-alterdefaultprivileges.html>`_,
 `CREATE TRIGGER <https://www.postgresql.org/docs/18/sql-createtrigger.html>`_.
+
+Legacy MySQL GROUP BY ordering
+==============================
+
+MySQL before 8.0.13 accepted ``ASC`` and ``DESC`` on individual ``GROUP BY`` items.
+Select the existing ``MYSQL`` dialect and explicitly enable this legacy syntax:
+
+.. code-block:: java
+
+    Statement statement = CCJSqlParserUtil.parse(
+        "SELECT a FROM t GROUP BY a DESC",
+        parser -> parser.withDialect(Dialect.MYSQL).withLegacyMySqlGroupBy(true));
+
+The option is disabled by default and does not enable this syntax in other dialects.
+``GroupByElement`` keeps its existing expression list; ``getGroupBySortDirection(index)``
+returns each explicit direction, or null when omitted. Directions follow list positions;
+replacing the expression list clears them. Validators report the separate
+``selectGroupByOrdering`` feature, which is not enabled in the MySQL 8.0 capability.

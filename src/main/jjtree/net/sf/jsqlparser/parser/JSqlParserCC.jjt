@@ -7596,7 +7596,13 @@ GroupByElement GroupByColumnReferences():
         )
         |
         (
-            list = ExpressionList() { groupBy.setGroupByExpressions(list); }
+            (
+                LOOKAHEAD({ getAsBoolean(Feature.allowLegacyMySqlGroupBy)
+                        && "MYSQL".equals(getAsString(Feature.dialect)) })
+                LegacyMySqlGroupByExpressions(groupBy)
+                |
+                list = ExpressionList() { groupBy.setGroupByExpressions(list); }
+            )
             (
                 LOOKAHEAD(2) <K_GROUPING> <K_SETS>
                 "("
@@ -7610,6 +7616,27 @@ GroupByElement GroupByColumnReferences():
     {
         return groupBy;
     }
+}
+
+void LegacyMySqlGroupByExpressions(GroupByElement groupBy):
+{}
+{
+    LegacyMySqlGroupByExpression(groupBy)
+    ( LOOKAHEAD(2) "," LegacyMySqlGroupByExpression(groupBy) )*
+}
+
+void LegacyMySqlGroupByExpression(GroupByElement groupBy):
+{
+    Expression expression;
+    Token direction;
+}
+{
+    expression = Expression() { groupBy.getGroupByExpressionList().add(expression); }
+    [ LOOKAHEAD(2) (direction=<K_ASC> | direction=<K_DESC>) {
+        groupBy.setGroupBySortDirection(groupBy.getGroupByExpressionList().size() - 1,
+                direction.kind == K_ASC ? GroupByElement.SortDirection.ASC
+                        : GroupByElement.SortDirection.DESC);
+    } ]
 }
 
 ExpressionList<Expression> GroupingSet():

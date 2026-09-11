@@ -102,6 +102,11 @@ public abstract class AbstractJSqlParser<P> {
         return withFeature(Feature.allowUnsupportedStatements, allowUnsupportedStatements);
     }
 
+    /** Enables GROUP BY ASC/DESC for MySQL versions before 8.0.13. Requires MYSQL dialect. */
+    public P withLegacyMySqlGroupBy(boolean enabled) {
+        return withFeature(Feature.allowLegacyMySqlGroupBy, enabled);
+    }
+
     public P withTimeOut(long timeOutMillSeconds) {
         return withFeature(Feature.timeOut, timeOutMillSeconds);
     }
