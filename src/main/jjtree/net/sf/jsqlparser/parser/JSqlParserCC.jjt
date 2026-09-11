@@ -33,6 +33,10 @@ PARSER_BEGIN(CCJSqlParser)
 
 package net.sf.jsqlparser.parser;
 
+import net.sf.jsqlparser.statement.oracle.OracleBlock;
+import net.sf.jsqlparser.statement.oracle.OracleAssignment;
+import net.sf.jsqlparser.statement.oracle.OracleNullStatement;
+
 import java.lang.reflect.Field;
 import java.lang.Integer;
 
@@ -2669,6 +2673,10 @@ Statement SingleStatement() :
 }
 {
         (
+           LOOKAHEAD({ Dialect.ORACLE.name().equals(getAsString(Feature.dialect))
+               && (getToken(1).kind == K_DECLARE || getToken(1).kind == K_BEGIN) })
+           stm = OracleBlock()
+           |
            LOOKAHEAD(3) (
                 [ LOOKAHEAD(2) with=WithList() ]
                 (
@@ -2742,6 +2750,86 @@ Statement SingleStatement() :
             LOOKAHEAD({ Dialect.EXASOL.name().equals(getAsString(Feature.dialect)) }) ( stm = Import() | stm = Export() )
         )
         { return stm; }
+}
+
+OracleBlock OracleBlock():
+{
+    OracleBlock block = new OracleBlock();
+    OracleBlock.VariableDeclaration declaration;
+    OracleBlock.ExceptionHandler handler;
+    Statements statements;
+}
+{
+    [ <K_DECLARE> declaration=OracleVariableDeclaration() { block.getDeclarations().add(declaration); }
+      ( LOOKAHEAD({ getToken(1).kind != K_BEGIN })
+        declaration=OracleVariableDeclaration() { block.getDeclarations().add(declaration); } )* ]
+    <K_BEGIN> statements=OracleBlockStatements() { block.setStatements(statements); }
+    [ LOOKAHEAD({ isKeywordAhead("EXCEPTION") }) AccessKeyword("EXCEPTION")
+      handler=OracleExceptionHandler() { block.getExceptionHandlers().add(handler); }
+      ( handler=OracleExceptionHandler() { block.getExceptionHandlers().add(handler); } )* ]
+    <K_END>
+    { block.setSemicolonAfterEnd(true); return block; }
+}
+
+OracleBlock.VariableDeclaration OracleVariableDeclaration():
+{
+    OracleBlock.VariableDeclaration declaration = new OracleBlock.VariableDeclaration();
+    String name; ColDataType dataType; Expression initializer;
+}
+{
+    name=RelObjectName() { declaration.setName(name); }
+    [ LOOKAHEAD({ isKeywordAhead("CONSTANT") }) AccessKeyword("CONSTANT") { declaration.setConstant(true); } ]
+    dataType=ColDataType() { declaration.setDataType(dataType); }
+    [ <K_NOT> <K_NULL> { declaration.setNotNull(true); } ]
+    [ ( ":=" | <K_DEFAULT> { declaration.setInitializerOperator("DEFAULT"); } )
+      initializer=Expression() { declaration.setInitializer(initializer); } ]
+    <ST_SEMICOLON>
+    { requireDdlSyntax((!declaration.isConstant() && !declaration.isNotNull()) || declaration.getInitializer() != null,
+          "A CONSTANT or NOT NULL variable requires an initializer"); return declaration; }
+}
+
+Statements OracleBlockStatements():
+{ Statements statements = new Statements(); Statement statement; }
+{
+    statement=OracleBlockStatement() <ST_SEMICOLON> { statements.add(statement); }
+    ( LOOKAHEAD({ getToken(1).kind != K_END && getToken(1).kind != K_WHEN && !isKeywordAhead("EXCEPTION") })
+      statement=OracleBlockStatement() <ST_SEMICOLON> { statements.add(statement); } )*
+    { return statements; }
+}
+
+Statement OracleBlockStatement():
+{ Statement statement; Expression target; Expression value; }
+{
+    (
+        LOOKAHEAD({ getToken(1).kind == K_DECLARE || getToken(1).kind == K_BEGIN }) statement=OracleBlock()
+        | LOOKAHEAD(Column() ":=") target=Column() ":=" value=Expression()
+          { statement = new OracleAssignment(target, value); }
+        | LOOKAHEAD(JdbcNamedParameter() ":=") target=JdbcNamedParameter() ":=" value=Expression()
+          { statement = new OracleAssignment(target, value); }
+        | <K_NULL> { statement = new OracleNullStatement(); }
+        | LOOKAHEAD(ColumnIdentifier() ("(" | <ST_SEMICOLON>))
+          statement=OracleImplicitCall()
+        | statement=SingleStatement()
+    )
+    { return statement; }
+}
+
+Execute OracleImplicitCall():
+{ Execute call = new Execute(); ObjectNames name; ExpressionList arguments; }
+{
+    name=ColumnIdentifier() { call.setName(name.getNames()); call.setExecType(Execute.ExecType.IMPLICIT);
+      requireDdlSyntax(!Arrays.asList("RAISE", "RETURN", "GOTO", "EXIT", "CONTINUE", "LOOP", "WHILE", "FOR")
+          .contains(call.getName().toUpperCase(java.util.Locale.ROOT)), "Unsupported PL/SQL control statement"); }
+    [ LOOKAHEAD("(") arguments=ExpressionList() { call.setExprList(arguments); } ]
+    { return call; }
+}
+
+OracleBlock.ExceptionHandler OracleExceptionHandler():
+{ OracleBlock.ExceptionHandler handler = new OracleBlock.ExceptionHandler(); String name; Statements body; }
+{
+    <K_WHEN> name=TypeDdlName() { handler.getExceptions().add(name); }
+    ( <K_OR> name=TypeDdlName() { handler.getExceptions().add(name); } )*
+    <K_THEN> body=OracleBlockStatements() { handler.setStatements(body); return handler; }
 }
 
 Block Block() #Block : {

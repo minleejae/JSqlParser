@@ -9,6 +9,10 @@
  */
 package net.sf.jsqlparser.util;
 
+import net.sf.jsqlparser.statement.oracle.OracleBlock;
+import net.sf.jsqlparser.statement.oracle.OracleAssignment;
+import net.sf.jsqlparser.statement.oracle.OracleNullStatement;
+
 import net.sf.jsqlparser.statement.role.CreateRole;
 import net.sf.jsqlparser.statement.role.AlterRole;
 import net.sf.jsqlparser.statement.grant.Revoke;
@@ -2630,4 +2634,23 @@ public class TablesNamesFinder<Void>
 
         return null;
     }
+
+    @Override
+    public <S> Void visit(OracleBlock block, S context) {
+        block.visitChildren(expression -> expression.accept(this, context),
+                statement -> statement.accept(this, context));
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(OracleAssignment assignment, S context) {
+        assignment.getValue().accept(this, context);
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(OracleNullStatement statement, S context) {
+        return null;
+    }
+
 }

@@ -9,6 +9,10 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.statement.oracle.OracleBlock;
+import net.sf.jsqlparser.statement.oracle.OracleAssignment;
+import net.sf.jsqlparser.statement.oracle.OracleNullStatement;
+
 import net.sf.jsqlparser.statement.role.CreateRole;
 import net.sf.jsqlparser.statement.role.AlterRole;
 import net.sf.jsqlparser.statement.grant.Revoke;
@@ -520,4 +524,29 @@ public interface StatementVisitor<T> {
     default void visit(AlterSubscription statement) {
         visit(statement, null);
     }
+
+    default <S> T visit(OracleBlock block, S context) {
+        return visit((Block) block, context);
+    }
+
+    default void visit(OracleBlock block) {
+        visit(block, null);
+    }
+
+    default <S> T visit(OracleAssignment assignment, S context) {
+        return null;
+    }
+
+    default void visit(OracleAssignment assignment) {
+        visit(assignment, null);
+    }
+
+    default <S> T visit(OracleNullStatement statement, S context) {
+        return null;
+    }
+
+    default void visit(OracleNullStatement statement) {
+        visit(statement, null);
+    }
+
 }

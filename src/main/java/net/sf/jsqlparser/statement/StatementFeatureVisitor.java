@@ -9,6 +9,10 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.statement.oracle.OracleBlock;
+import net.sf.jsqlparser.statement.oracle.OracleAssignment;
+import net.sf.jsqlparser.statement.oracle.OracleNullStatement;
+
 import net.sf.jsqlparser.statement.role.CreateRole;
 import net.sf.jsqlparser.statement.role.AlterRole;
 import net.sf.jsqlparser.statement.grant.Revoke;
@@ -986,4 +990,24 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
         }
         return null;
     }
+
+    @Override
+    public <S> Void visit(OracleBlock block, S context) {
+        analysis.claimTopLevel();
+        return super.visit(block, context);
+    }
+
+    @Override
+    public <S> Void visit(OracleAssignment assignment, S context) {
+        analysis.claimTopLevel();
+        // Assignment to a local variable is not a database write.
+        return super.visit(assignment, context);
+    }
+
+    @Override
+    public <S> Void visit(OracleNullStatement statement, S context) {
+        analysis.claimTopLevel();
+        return null;
+    }
+
 }

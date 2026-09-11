@@ -9,6 +9,10 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
+import net.sf.jsqlparser.statement.oracle.OracleBlock;
+import net.sf.jsqlparser.statement.oracle.OracleAssignment;
+import net.sf.jsqlparser.statement.oracle.OracleNullStatement;
+
 import net.sf.jsqlparser.statement.role.CreateRole;
 import net.sf.jsqlparser.statement.role.AlterRole;
 import net.sf.jsqlparser.statement.grant.Revoke;
@@ -657,4 +661,22 @@ public class StatementDeParser extends AbstractDeParser<Statement>
         statement.appendTo(builder, expression -> expression.accept(expressionDeParser, context));
         return builder;
     }
+
+    @Override
+    public <S> StringBuilder visit(OracleBlock block, S context) {
+        return block.appendTo(builder, expression -> expression.accept(expressionDeParser, context),
+                statement -> statement.accept(this, context));
+    }
+
+    @Override
+    public <S> StringBuilder visit(OracleAssignment assignment, S context) {
+        return assignment.appendTo(builder,
+                expression -> expression.accept(expressionDeParser, context));
+    }
+
+    @Override
+    public <S> StringBuilder visit(OracleNullStatement statement, S context) {
+        return builder.append("NULL");
+    }
+
 }

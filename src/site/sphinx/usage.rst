@@ -872,3 +872,19 @@ References: `CREATE ROLE <https://www.postgresql.org/docs/18/sql-createrole.html
 `REVOKE <https://www.postgresql.org/docs/18/sql-revoke.html>`_,
 `ALTER DEFAULT PRIVILEGES <https://www.postgresql.org/docs/18/sql-alterdefaultprivileges.html>`_,
 `CREATE TRIGGER <https://www.postgresql.org/docs/18/sql-createtrigger.html>`_.
+
+Oracle anonymous blocks
+-----------------------
+
+With ``Dialect.ORACLE``, ``OracleBlock`` extends ``Block`` with variable declarations
+and exception handlers. Initializers and ``OracleAssignment`` values are expressions;
+nested blocks and handler bodies contain statements. Calls without ``CALL`` use
+``Execute.ExecType.IMPLICIT``, preserving qualified names, parentheses and bind arguments.
+``OracleNullStatement`` represents the PL/SQL ``NULL`` statement. Implicit calls are
+recognized inside Oracle blocks, so application procedure names need no keyword registration.
+
+Shared traversal and rendering include declaration initializers, assignments and exception
+handler bodies. Procedure side effects remain unknown; table discovery reports unsupported
+procedure calls, and feature analysis remains conservative. This covers anonymous blocks
+with variable declarations, SQL statements, assignments, calls, nesting and handlers, not
+all PL/SQL declarations, loops, packages or procedure definitions.
