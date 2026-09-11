@@ -38,6 +38,7 @@ import net.sf.jsqlparser.statement.Commit;
 import net.sf.jsqlparser.statement.CreateFunctionalStatement;
 import net.sf.jsqlparser.statement.DeclareStatement;
 import net.sf.jsqlparser.statement.DescribeStatement;
+import net.sf.jsqlparser.statement.DoStatement;
 import net.sf.jsqlparser.statement.ExplainStatement;
 import net.sf.jsqlparser.statement.IfElseStatement;
 import net.sf.jsqlparser.statement.PurgeStatement;
@@ -149,6 +150,11 @@ public class StatementDeParser extends AbstractDeParser<Statement>
                 new CreateIndexDeParser(builder, expressionDeParser);
         createIndexDeParser.deParse(createIndex);
         return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(DoStatement statement, S context) {
+        return statement.appendTo(builder, code -> code.accept(expressionDeParser, context));
     }
 
     @Override

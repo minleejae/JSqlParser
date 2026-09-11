@@ -2764,6 +2764,9 @@ Statement SingleStatement() :
             |
             stm = Execute()
             |
+            LOOKAHEAD({ getToken(1).kind == K_DO && Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect)) })
+            stm = DoStatement()
+            |
             stm = Set()
             |
             stm = Reset()
@@ -2881,6 +2884,26 @@ OracleBlock.ExceptionHandler OracleExceptionHandler():
     <K_WHEN> name=TypeDdlName() { handler.getExceptions().add(name); }
     ( <K_OR> name=TypeDdlName() { handler.getExceptions().add(name); } )*
     <K_THEN> body=OracleBlockStatements() { handler.setStatements(body); return handler; }
+}
+
+DoStatement DoStatement():
+{
+    DoStatement statement = new DoStatement();
+    String language;
+    Token code;
+}
+{
+    <K_DO>
+    (
+        LOOKAHEAD({ isKeywordAhead("LANGUAGE") })
+        AccessKeyword("LANGUAGE") language=RelObjectName() code=<S_CHAR_LITERAL>
+        { statement.setLanguage(language); statement.setLanguageBeforeCode(true); }
+        |
+        code=<S_CHAR_LITERAL>
+        [ LOOKAHEAD({ isKeywordAhead("LANGUAGE") }) AccessKeyword("LANGUAGE")
+            language=RelObjectName() { statement.setLanguage(language); } ]
+    )
+    { statement.setCode(new StringValue(code.image)); return statement; }
 }
 
 Block Block() #Block : {

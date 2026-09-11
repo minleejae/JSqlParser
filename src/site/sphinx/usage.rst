@@ -766,6 +766,17 @@ uses the existing ``Update`` model's ``fromItem`` and ``joins`` properties.
 Table discovery and metadata validation recognize a target alias declared in
 that FROM clause. Other dialects retain the existing FROM-after-SET syntax.
 
+``Dialect.POSTGRESQL`` enables ``DO [LANGUAGE name] code [LANGUAGE name]``,
+with the language clause allowed once, before or after the body.
+``DoStatement.getCode()`` is a ``StringValue`` that preserves the literal's
+quotes, dollar tag and body text. The optional language and its position have
+separate properties; an omitted language remains unspecified in the AST.
+The body is language-specific source, not a parsed PL/pgSQL statement tree.
+Expression visitors can inspect or replace the body literal. Feature analysis
+reports ``OPAQUE``; table discovery rejects this statement because the body's
+table accesses are unknown. Validation checks the ``doStatement`` capability,
+without validating the procedural language inside the literal.
+
 With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
 ``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``
 for both ``CREATE TABLE`` and ``ALTER TABLE``. Without that dialect, these words

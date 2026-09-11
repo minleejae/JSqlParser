@@ -91,6 +91,7 @@ import net.sf.jsqlparser.statement.Commit;
 import net.sf.jsqlparser.statement.CreateFunctionalStatement;
 import net.sf.jsqlparser.statement.DeclareStatement;
 import net.sf.jsqlparser.statement.DescribeStatement;
+import net.sf.jsqlparser.statement.DoStatement;
 import net.sf.jsqlparser.statement.ExplainStatement;
 import net.sf.jsqlparser.statement.IfElseStatement;
 import net.sf.jsqlparser.statement.OutputClause;
@@ -1561,6 +1562,12 @@ public class TablesNamesFinder<Void>
         TableDefinitionTraversal.visit(createIndex,
                 expression -> expression.accept(this, context),
                 table -> visit(table, context));
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(DoStatement statement, S context) {
+        throwUnsupported(statement);
         return null;
     }
 

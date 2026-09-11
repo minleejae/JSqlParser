@@ -457,7 +457,7 @@ public enum Feature {
      */
     oracleBlock,
 
-    execute, executeExec, executeCall, executeExecute,
+    execute, executeExec, executeCall, executeExecute, doStatement,
 
     /**
      * SQL "EXECUTE" statement is allowed

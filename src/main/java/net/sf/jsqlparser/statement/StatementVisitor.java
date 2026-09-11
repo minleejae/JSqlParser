@@ -210,6 +210,14 @@ public interface StatementVisitor<T> {
 
     <S> T visit(Execute execute, S context);
 
+    default <S> T visit(DoStatement statement, S context) {
+        return null;
+    }
+
+    default void visit(DoStatement statement) {
+        this.visit(statement, null);
+    }
+
     default void visit(Execute execute) {
         this.visit(execute, null);
     }

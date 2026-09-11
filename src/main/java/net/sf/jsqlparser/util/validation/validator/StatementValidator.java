@@ -35,6 +35,7 @@ import net.sf.jsqlparser.parser.feature.Feature;
 import net.sf.jsqlparser.statement.Block;
 import net.sf.jsqlparser.statement.Commit;
 import net.sf.jsqlparser.statement.CreateFunctionalStatement;
+import net.sf.jsqlparser.statement.DoStatement;
 import net.sf.jsqlparser.statement.DeclareStatement;
 import net.sf.jsqlparser.statement.DescribeStatement;
 import net.sf.jsqlparser.statement.ExplainStatement;
@@ -229,6 +230,12 @@ public class StatementValidator extends AbstractValidator<Statement>
     @Override
     public <S> Void visit(Execute execute, S context) {
         getValidator(ExecuteValidator.class).validate(execute);
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(DoStatement statement, S context) {
+        validateFeature(Feature.doStatement);
         return null;
     }
 
