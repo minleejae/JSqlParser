@@ -65,6 +65,7 @@ import net.sf.jsqlparser.statement.select.FromItemVisitorAdapter;
 import net.sf.jsqlparser.statement.select.PivotVisitor;
 import net.sf.jsqlparser.statement.select.PivotVisitorAdapter;
 import net.sf.jsqlparser.statement.select.PlainSelect;
+import net.sf.jsqlparser.statement.select.MySqlSelectIntoClause;
 import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.select.SelectItem;
 import net.sf.jsqlparser.statement.select.SelectItemVisitor;
@@ -792,6 +793,12 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
                     || plainSelect.getIntoTempTable() != null;
             if (into) {
                 analysis.certain(StmtFeature.MODIFIES_DATA, StmtFeature.MODIFIES_SCHEMA);
+                analysis.certain.remove(StmtFeature.RETURNS_RESULT_SET);
+            }
+
+            MySqlSelectIntoClause mySqlInto = plainSelect.getMySqlSelectIntoClause();
+            if (mySqlInto != null && mySqlInto.getType() == MySqlSelectIntoClause.Type.VARIABLES) {
+                analysis.certain(StmtFeature.MODIFIES_SESSION);
                 analysis.certain.remove(StmtFeature.RETURNS_RESULT_SET);
             }
 

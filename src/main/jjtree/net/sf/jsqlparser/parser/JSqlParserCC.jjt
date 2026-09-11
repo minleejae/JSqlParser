@@ -1420,6 +1420,20 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         return Dialect.MYSQL.name().equals(dialect) || Dialect.MARIADB.name().equals(dialect);
     }
 
+    private boolean isMySqlSelectIntoAhead() {
+        if (getToken(1).kind != K_INTO) { return false; }
+        int kind = getToken(2).kind;
+        return kind == K_OUTFILE || kind == K_DUMPFILE
+                || isMySqlDialect() && (kind == S_AT_IDENTIFIER || kind == K_AT_SIGN);
+    }
+
+    private static UserVariable requireMySqlIntoVariable(UserVariable variable) throws ParseException {
+        if (variable.isDoubleAdd()) {
+            throw new ParseException("INTO requires a user variable with a single @ prefix");
+        }
+        return variable;
+    }
+
     private ExplainStatement.OptionType postgresqlExplainOptionType(String name) throws ParseException {
         try {
             return ExplainStatement.OptionType.from(name);
@@ -6190,12 +6204,14 @@ PlainSelect PlainSelect() #PlainSelect:
 
     selectItems=SelectItemsList()
 
-    [ LOOKAHEAD(<K_INTO> (<K_OUTFILE> | <K_DUMPFILE>))
-        mySqlSelectIntoClause = MySqlSelectIntoClause(MySqlSelectIntoClause.Position.BEFORE_FROM)
-        { plainSelect.setMySqlSelectIntoClause(mySqlSelectIntoClause); }
-    ]
     [ LOOKAHEAD(<K_INTO>)
-        intoTables = IntoClause() { plainSelect.setIntoTables(intoTables); }
+        (
+            LOOKAHEAD({ isMySqlSelectIntoAhead() })
+            mySqlSelectIntoClause = MySqlSelectIntoClause(MySqlSelectIntoClause.Position.BEFORE_FROM)
+            { plainSelect.setMySqlSelectIntoClause(mySqlSelectIntoClause); }
+            |
+            intoTables = IntoClause() { plainSelect.setIntoTables(intoTables); }
+        )
     ]
     [ LOOKAHEAD(2) <K_FROM> fromItem=FromItem()
         [ LOOKAHEAD(2) lateralViews=LateralViews() ]
@@ -6287,7 +6303,12 @@ PlainSelect PlainSelect() #PlainSelect:
         ]
         [ LOOKAHEAD(2) interpolateElements = InterpolateClause() { plainSelect.setInterpolate(interpolateElements); } ]
     ]
-    [ LOOKAHEAD(<K_INTO> (<K_OUTFILE> | <K_DUMPFILE>))
+    [ LOOKAHEAD({ isMySqlSelectIntoAhead() })
+        {
+            if (mySqlSelectIntoClause != null || intoTables != null) {
+                throw new ParseException("Only one INTO clause is allowed per SELECT");
+            }
+        }
         mySqlSelectIntoClause = MySqlSelectIntoClause(MySqlSelectIntoClause.Position.TRAILING)
         { plainSelect.setMySqlSelectIntoClause(mySqlSelectIntoClause); }
     ]
@@ -6921,6 +6942,8 @@ MySqlSelectIntoClause MySqlSelectIntoClause(MySqlSelectIntoClause.Position posit
 {
     MySqlSelectIntoClause intoClause = new MySqlSelectIntoClause().withPosition(position);
     Token token;
+    ExpressionList<UserVariable> variables = new ExpressionList<UserVariable>();
+    UserVariable variable;
 }
 {
     <K_INTO>
@@ -6931,10 +6954,30 @@ MySqlSelectIntoClause MySqlSelectIntoClause(MySqlSelectIntoClause.Position posit
         |
           <K_DUMPFILE> { intoClause.setType(MySqlSelectIntoClause.Type.DUMPFILE); }
           token=<S_CHAR_LITERAL> { intoClause.setFileName(new StringValue(token.image)); }
+        |
+          LOOKAHEAD({ isMySqlDialect() })
+          variable=MySqlIntoVariable() { variables.add(variable); }
+          ( "," variable=MySqlIntoVariable() { variables.add(variable); } )*
+          { intoClause.setType(MySqlSelectIntoClause.Type.VARIABLES); intoClause.setVariables(variables); }
     )
     {
         return intoClause;
     }
+}
+
+UserVariable MySqlIntoVariable():
+{
+    UserVariable variable;
+    Token name;
+}
+{
+    (
+        variable=UserVariable()
+        |
+        <K_AT_SIGN> (name=<S_CHAR_LITERAL> | name=<S_QUOTED_IDENTIFIER>)
+        { variable = new UserVariable("@" + name.image); }
+    )
+    { return requireMySqlIntoVariable(variable); }
 }
 
 MySqlProcedureAnalyse MySqlProcedureAnalyse():

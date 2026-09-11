@@ -258,11 +258,7 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
             }
         }
 
-        if (plainSelect.getMySqlSelectIntoClause() != null
-                && plainSelect.getMySqlSelectIntoClause()
-                        .getPosition() == MySqlSelectIntoClause.Position.BEFORE_FROM) {
-            builder.append(" ").append(plainSelect.getMySqlSelectIntoClause());
-        }
+        deparseMySqlSelectInto(plainSelect, MySqlSelectIntoClause.Position.BEFORE_FROM, context);
 
         if (plainSelect.getFromItem() != null) {
             builder.append(" FROM ");
@@ -401,11 +397,7 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
         if (plainSelect.isForUpdateBeforeOrderBy()) {
             deparseOrderByElementsClause(plainSelect, plainSelect.getOrderByElements());
         }
-        if (plainSelect.getMySqlSelectIntoClause() != null
-                && plainSelect.getMySqlSelectIntoClause()
-                        .getPosition() == MySqlSelectIntoClause.Position.TRAILING) {
-            builder.append(" ").append(plainSelect.getMySqlSelectIntoClause());
-        }
+        deparseMySqlSelectInto(plainSelect, MySqlSelectIntoClause.Position.TRAILING, context);
         if (plainSelect.getSettings() != null && !plainSelect.getSettings().isEmpty()) {
             builder.append(" SETTINGS ");
             deparseUpdateSets(plainSelect.getSettings(), builder, expressionVisitor);
@@ -718,6 +710,15 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
 
     public void setExpressionVisitor(ExpressionVisitor<StringBuilder> visitor) {
         expressionVisitor = visitor;
+    }
+
+    private <S> void deparseMySqlSelectInto(PlainSelect select,
+            MySqlSelectIntoClause.Position position, S context) {
+        MySqlSelectIntoClause into = select.getMySqlSelectIntoClause();
+        if (into != null && into.getPosition() == position) {
+            builder.append(' ');
+            into.appendTo(builder, expression -> expression.accept(expressionVisitor, context));
+        }
     }
 
     @SuppressWarnings({"PMD.CyclomaticComplexity"})

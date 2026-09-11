@@ -716,6 +716,12 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
 
 Features set explicitly *after* the preset win over it.
 
+MySQL user-variable targets in ``SELECT ... INTO @variable`` require
+``Dialect.MYSQL`` or ``Dialect.MARIADB``. They are stored in
+``PlainSelect.getMySqlSelectIntoClause().getVariables()`` as ``UserVariable``
+expressions, with the clause position preserved before ``FROM`` or at the end
+of the query. They are not table targets in ``getIntoTables()``.
+
 Informix's constraint form requires an explicit dialect selection:
 
 .. code-block:: java
