@@ -479,6 +479,11 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
     }
 
     @Override
+    public <S> T visit(SetIdentityInsertStatement statement, S context) {
+        return statement.getTable().accept(fromItemVisitor, context);
+    }
+
+    @Override
     public <S> T visit(UseStatement use, S context) {
         return null;
     }

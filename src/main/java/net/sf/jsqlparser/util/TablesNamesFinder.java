@@ -110,6 +110,7 @@ import net.sf.jsqlparser.statement.StatementVisitor;
 import net.sf.jsqlparser.statement.Statements;
 import net.sf.jsqlparser.statement.UnsupportedStatement;
 import net.sf.jsqlparser.statement.UseStatement;
+import net.sf.jsqlparser.statement.SetIdentityInsertStatement;
 import net.sf.jsqlparser.statement.alter.Alter;
 import net.sf.jsqlparser.statement.alter.AlterSession;
 import net.sf.jsqlparser.statement.alter.AlterSystemStatement;
@@ -1936,6 +1937,11 @@ public class TablesNamesFinder<Void>
     @Override
     public void visit(Upsert upsert) {
         StatementVisitor.super.visit(upsert);
+    }
+
+    @Override
+    public <S> Void visit(SetIdentityInsertStatement statement, S context) {
+        return statement.getTable().accept(this, context);
     }
 
     @Override

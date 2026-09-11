@@ -2785,6 +2785,12 @@ Statement SingleStatement() :
             LOOKAHEAD({ getToken(1).kind == K_DO && Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect)) })
             stm = DoStatement()
             |
+            LOOKAHEAD({ Dialect.SQLSERVER.name().equals(getAsString(Feature.dialect))
+                && getToken(1).kind == K_SET && getToken(2).kind == S_IDENTIFIER
+                && "IDENTITY_INSERT".equalsIgnoreCase(getToken(2).image)
+                && !"=".equals(getToken(3).image) && !".".equals(getToken(3).image) })
+            stm = SetIdentityInsert()
+            |
             stm = Set()
             |
             stm = Reset()
@@ -4385,6 +4391,22 @@ List<ExplainStatement.Option> ExplainStatementOptions():
   {
     return options;
   }
+}
+
+SetIdentityInsertStatement SetIdentityInsert(): {
+    Table table;
+    boolean on;
+}
+{
+    <K_SET> AccessKeyword("IDENTITY_INSERT") table=Table()
+    {
+        requireAccessSyntax(table.getNameParts().size() <= 3,
+            "IDENTITY_INSERT requires a table name with at most three parts");
+    }
+    ( <K_ON> { on = true; } | <K_OFF> { on = false; } )
+    {
+        return new SetIdentityInsertStatement(table, on);
+    }
 }
 
 UseStatement Use(): {

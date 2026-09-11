@@ -270,6 +270,14 @@ public interface StatementVisitor<T> {
         this.visit(upsert, null);
     }
 
+    default <S> T visit(SetIdentityInsertStatement statement, S context) {
+        return null;
+    }
+
+    default void visit(SetIdentityInsertStatement statement) {
+        visit(statement, null);
+    }
+
     <S> T visit(UseStatement use, S context);
 
     default void visit(UseStatement use) {

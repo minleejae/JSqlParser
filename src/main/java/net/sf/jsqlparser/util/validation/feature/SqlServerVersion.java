@@ -108,7 +108,7 @@ public enum SqlServerVersion implements Version {
                     Feature.commit, // special sql-server features
                     // https://docs.microsoft.com/en-us/sql/relational-databases/xml/for-xml-sql-server?view=sql-server-ver15
                     Feature.selectForXmlPath,
-                    Feature.use, Feature.allowSquareBracketQuotation, //
+                    Feature.use, Feature.setIdentityInsert, Feature.allowSquareBracketQuotation, //
                     Feature.pivot, Feature.unpivot, Feature.pivotXml,
                     Feature.selectGroupByGroupingSets));
 

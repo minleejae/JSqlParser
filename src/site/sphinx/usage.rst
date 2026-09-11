@@ -1006,6 +1006,17 @@ Parse procedure definitions one SQL Server batch at a time: a procedure consumes
 remaining batch, including SQL after an ``END``. Client-side ``GO`` batch splitting is
 not performed by this routine declaration parser.
 
+SQL Server identity inserts
+---------------------------
+
+With ``Dialect.SQLSERVER``, ``SET IDENTITY_INSERT dbo.actor ON`` uses
+``SetIdentityInsertStatement``. ``getTable()`` reuses the qualified ``Table`` AST;
+``isOn()`` and ``setOn()`` expose the session setting. Table names may include a
+database and schema, including SQL Server bracket-quoted identifiers. Table
+visitors, both SQL renderers and metadata validation use this structured target.
+Feature analysis reports ``MODIFIES_SESSION``; the directive itself inserts no rows.
+The dedicated validation capability is ``setIdentityInsert``.
+
 Legacy MySQL GROUP BY ordering
 ==============================
 

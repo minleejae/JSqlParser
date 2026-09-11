@@ -708,6 +708,11 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
     }
 
     @Override
+    public <S> Void visit(SetIdentityInsertStatement statement, S context) {
+        return sessionOnly();
+    }
+
+    @Override
     public <S> Void visit(UseStatement use, S context) {
         return sessionOnly();
     }

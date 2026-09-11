@@ -54,6 +54,7 @@ import net.sf.jsqlparser.statement.StatementVisitor;
 import net.sf.jsqlparser.statement.Statements;
 import net.sf.jsqlparser.statement.UnsupportedStatement;
 import net.sf.jsqlparser.statement.UseStatement;
+import net.sf.jsqlparser.statement.SetIdentityInsertStatement;
 import net.sf.jsqlparser.statement.alter.Alter;
 import net.sf.jsqlparser.statement.alter.AlterSession;
 import net.sf.jsqlparser.statement.alter.AlterSystemStatement;
@@ -376,6 +377,11 @@ public class StatementDeParser extends AbstractDeParser<Statement>
                 new UpsertDeParser(expressionDeParser, selectDeParser, builder);
         upsertDeParser.deParse(upsert);
         return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(SetIdentityInsertStatement statement, S context) {
+        return statement.appendTo(builder, table -> table.accept(selectDeParser, context));
     }
 
     @Override

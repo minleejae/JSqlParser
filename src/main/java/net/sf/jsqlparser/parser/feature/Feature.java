@@ -644,6 +644,8 @@ public enum Feature {
      * @see UseStatement
      */
     use,
+    /** SQL Server session permission to insert explicit identity values into a table. */
+    setIdentityInsert,
     /**
      * @see Grant
      */

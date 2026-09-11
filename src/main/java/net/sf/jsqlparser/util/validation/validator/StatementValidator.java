@@ -53,6 +53,7 @@ import net.sf.jsqlparser.statement.StatementVisitor;
 import net.sf.jsqlparser.statement.Statements;
 import net.sf.jsqlparser.statement.UnsupportedStatement;
 import net.sf.jsqlparser.statement.UseStatement;
+import net.sf.jsqlparser.statement.SetIdentityInsertStatement;
 import net.sf.jsqlparser.statement.alter.Alter;
 import net.sf.jsqlparser.statement.alter.AlterSession;
 import net.sf.jsqlparser.statement.alter.AlterSystemStatement;
@@ -266,6 +267,12 @@ public class StatementValidator extends AbstractValidator<Statement>
     @Override
     public <S> Void visit(Upsert upsert, S context) {
         getValidator(UpsertValidator.class).validate(upsert);
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(SetIdentityInsertStatement statement, S context) {
+        getValidator(SetIdentityInsertValidator.class).validate(statement);
         return null;
     }
 
