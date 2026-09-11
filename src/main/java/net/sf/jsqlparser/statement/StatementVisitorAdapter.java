@@ -397,16 +397,9 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
     public <S> T visit(Alter alter, S context) {
         alter.getTable().accept(fromItemVisitor, context);
         for (AlterExpression action : alter.getAlterExpressions()) {
-            if (action.getColDataTypeList() != null) {
-                action.getColDataTypeList().forEach(column -> TableDefinitionTraversal.visit(column,
-                        expression -> expression.accept(expressionVisitor, context),
-                        table -> table.accept(fromItemVisitor, context)));
-            }
-            if (action.getIndex() != null) {
-                TableDefinitionTraversal.visit(action.getIndex(),
-                        expression -> expression.accept(expressionVisitor, context),
-                        table -> table.accept(fromItemVisitor, context));
-            }
+            TableDefinitionTraversal.visit(action,
+                    expression -> expression.accept(expressionVisitor, context),
+                    table -> table.accept(fromItemVisitor, context));
         }
         return null;
     }
@@ -553,6 +546,13 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
 
     @Override
     public <S> T visit(CreateFunctionalStatement createFunctionalStatement, S context) {
+        if (createFunctionalStatement.getReturnType() != null
+                && createFunctionalStatement.getReturnType().getTableElements() != null) {
+            createFunctionalStatement.getReturnType().getTableElements()
+                    .forEach(element -> TableDefinitionTraversal.visit(element,
+                            expression -> expression.accept(expressionVisitor, context),
+                            table -> table.accept(fromItemVisitor, context)));
+        }
         return null;
     }
 

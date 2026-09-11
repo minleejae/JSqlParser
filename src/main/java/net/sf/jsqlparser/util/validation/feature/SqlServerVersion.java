@@ -96,6 +96,7 @@ public enum SqlServerVersion implements Version {
                     Feature.createTableFromSelect, // https://docs.microsoft.com/en-us/sql/t-sql/statements/create-function-transact-sql?view=sql-server-ver15
                     // https://docs.microsoft.com/en-us/sql/t-sql/statements/create-procedure-transact-sql?view=sql-server-ver15
                     Feature.functionalStatement, Feature.createProcedure, Feature.createFunction,
+                    Feature.alterFunction, Feature.alterProcedure, Feature.createOrAlterRoutine,
                     Feature.block,
                     Feature.declare,
                     Feature.tableVariable, // https://docs.microsoft.com/en-us/sql/t-sql/statements/create-schema-transact-sql?view=sql-server-ver15

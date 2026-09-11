@@ -2721,6 +2721,13 @@ Statement SingleStatement() :
                && (getToken(1).kind == K_DECLARE || getToken(1).kind == K_BEGIN) })
            stm = OracleBlock()
            |
+           LOOKAHEAD({ Dialect.SQLSERVER.name().equals(getAsString(Feature.dialect))
+               && ((getToken(1).kind == K_ALTER && (getToken(2).kind == K_FUNCTION || getToken(2).kind == K_PROCEDURE))
+                   || (getToken(1).kind == K_CREATE && (getToken(2).kind == K_FUNCTION || getToken(2).kind == K_PROCEDURE
+                       || (getToken(2).kind == K_OR && getToken(3).kind == K_ALTER
+                           && (getToken(4).kind == K_FUNCTION || getToken(4).kind == K_PROCEDURE))))) })
+           stm = SqlServerRoutine()
+           |
            LOOKAHEAD(3) (
                 [ LOOKAHEAD(2) with=WithList() ]
                 (
@@ -8680,6 +8687,15 @@ Expression LikeExpression(Expression leftExpression) #LikeExpression:
     ) { result.setLikeKeyWord( LikeExpression.KeyWord.from(token.image)); }
     [ LOOKAHEAD(2) <K_BINARY> {result.setUseBinary(true); } ]
     rightExpression=SimpleExpression()
+    [
+        LOOKAHEAD("(" "+" ")")
+        "(" "+" ")"
+        {
+            if (rightExpression instanceof Column) {
+                ((Column) rightExpression).setOldOracleJoinSyntax(EqualsTo.ORACLE_JOIN_RIGHT);
+            }
+        }
+    ]
     [ LOOKAHEAD(2) <K_ESCAPE>
         (
             LOOKAHEAD(2)  token = <S_CHAR_LITERAL> { result.setEscape( new StringValue( token.image ) ); }
@@ -8704,6 +8720,15 @@ Expression SimilarToExpression(Expression leftExpression) #SimilarToExpression:
     [<K_NOT> { result.setNot(true); } ]
     <K_SIMILAR> <K_TO>
     rightExpression=SimpleExpression()
+    [
+        LOOKAHEAD("(" "+" ")")
+        "(" "+" ")"
+        {
+            if (rightExpression instanceof Column) {
+                ((Column) rightExpression).setOldOracleJoinSyntax(EqualsTo.ORACLE_JOIN_RIGHT);
+            }
+        }
+    ]
     [ LOOKAHEAD(2) <K_ESCAPE> token=<S_CHAR_LITERAL> { result.setEscape((new StringValue(token.image)).getValue()); }]
     {
         result.setLeftExpression(leftExpression);
@@ -15313,6 +15338,57 @@ AlterExpression AlterExpressionAddAlterModify():
     { return alterExp; }
 }
 
+/** Parses CockroachDB primary-key elements without legacy raw index parameters. */
+Index.ColumnParams CockroachPrimaryKeyColumn():
+{
+    Index.ColumnParams column;
+    String name;
+    Expression expression;
+    Token token;
+}
+{
+    (
+        LOOKAHEAD({ isFunctionAhead() }) expression=Function()
+        { column = new Index.ColumnParams(expression).withExpressionParenthesized(false); }
+        |
+        name=RelObjectName() { column = new Index.ColumnParams(name); }
+        |
+        "(" expression=Expression() ")" { column = new Index.ColumnParams(expression); }
+    )
+    [ (token=<S_IDENTIFIER> | token=<S_QUOTED_IDENTIFIER>) { column.setOperatorClass(token.image); } ]
+    [ (token=<K_ASC> | token=<K_DESC>) {
+        column.setSortOrder(Index.ColumnParams.SortOrder.valueOf(token.image.toUpperCase(Locale.ROOT)));
+    } ]
+    [ <K_NULLS> (token=<K_FIRST> | token=<K_LAST>) {
+        column.setNullOrdering(Index.ColumnParams.NullOrdering.valueOf(token.image.toUpperCase(Locale.ROOT)));
+    } ]
+    { return column; }
+}
+
+AlterExpressionPrimaryKey CockroachAlterPrimaryKey():
+{
+    AlterExpressionPrimaryKey action = new AlterExpressionPrimaryKey();
+    List<Index.ColumnParams> columns = new ArrayList<Index.ColumnParams>();
+    Index.ColumnParams column;
+    List<Index.Option> options;
+    Expression bucketCount;
+    Token token;
+}
+{
+    <K_ALTER> <K_PRIMARY> <K_KEY> <K_USING> <K_COLUMNS>
+    "(" column=CockroachPrimaryKeyColumn() { columns.add(column); }
+    ( "," column=CockroachPrimaryKeyColumn() { columns.add(column); } )* ")"
+    { action.getIndex().setColumns(columns); }
+    [ <K_USING> <K_HASH> { action.setUsingHash(true); }
+        [ LOOKAHEAD(<K_WITH> <S_IDENTIFIER>) <K_WITH> token=<S_IDENTIFIER> {
+            requireDdlSyntax("BUCKET_COUNT".equalsIgnoreCase(token.image), "Expected BUCKET_COUNT");
+        }
+        "=" bucketCount=Expression() { action.setBucketCount(bucketCount); } ]
+    ]
+    [ <K_WITH> options=PostgreSqlIndexOptions() { action.getIndex().setStorageParameters(options); } ]
+    { return action; }
+}
+
 /**
  * Parses all RENAME variants within ALTER TABLE.
  * Handles: RENAME [COLUMN] old TO new, RENAME [TO|AS] tablename, RENAME tablename,
@@ -15425,6 +15501,10 @@ AlterExpression AlterExpression():
 {
 
     (
+        LOOKAHEAD(<K_ALTER> <K_PRIMARY> <K_KEY>,
+                { Dialect.COCKROACHDB.name().equals(getAsString(Feature.dialect)) })
+        alterExp = CockroachAlterPrimaryKey()
+      |
         alterExp = AlterExpressionAddAlterModify()
       |
       (
@@ -16563,6 +16643,99 @@ CreateFunctionalStatement CreateFunctionStatement(boolean isUsingOrReplace):
 
     return type;
   }
+}
+
+CreateFunctionalStatement SqlServerRoutine():
+{
+    CreateFunctionalStatement result;
+    CreateFunctionalStatement.Operation operation = CreateFunctionalStatement.Operation.CREATE;
+    List<String> parts;
+    FunctionReturnType returnType;
+}
+{
+    ( <K_CREATE> [ <K_OR> <K_ALTER> { operation = CreateFunctionalStatement.Operation.CREATE_OR_ALTER; } ]
+      | <K_ALTER> { operation = CreateFunctionalStatement.Operation.ALTER; } )
+    (
+        <K_FUNCTION> parts=captureSqlServerFunctionHeader()
+        returnType=SqlServerFunctionReturnType()
+        { result = new CreateFunction(parts); result.setReturnType(returnType); }
+        parts=captureSqlServerRoutineBody(false) { result.setRoutineBodyParts(parts); }
+        | <K_PROCEDURE> parts=captureSqlServerRoutineBody(true) { result = new CreateProcedure(parts); }
+    )
+    { result.setOperation(operation); return result; }
+}
+
+FunctionReturnType SqlServerFunctionReturnType():
+{
+    FunctionReturnType result = new FunctionReturnType();
+    UserVariable variable; ColDataType dataType;
+    TableElement element; List<TableElement> elements = new ArrayList<TableElement>();
+}
+{
+    <K_RETURNS>
+    (
+        LOOKAHEAD({ getToken(1).kind == K_TABLE || getToken(1).kind == S_AT_IDENTIFIER })
+        [ variable=UserVariable() { result.setTableVariable(variable.toString()); } ]
+        <K_TABLE> { result.setTable(true); }
+        [ "(" element=SqlServerReturnTableElement() { elements.add(element); }
+          ( "," element=SqlServerReturnTableElement() { elements.add(element); } )* ")"
+          { result.setTableElements(elements); } ]
+        { requireDdlSyntax(result.getTableVariable() == null || result.getTableElements() != null,
+              "A return table variable requires column definitions"); }
+        | dataType=ColDataType() { result.setDataType(dataType); }
+    )
+    { return result; }
+}
+
+TableElement SqlServerReturnTableElement():
+{ TableElement element; }
+{
+    ( LOOKAHEAD(3) element=CreateTableConstraint() | element=ColumnDefinition() )
+    { return element; }
+}
+
+JAVACODE
+List<String> captureSqlServerFunctionHeader() {
+    List<String> parts = new ArrayList<String>();
+    int depth = 0;
+    while (true) {
+        Token next = getToken(1);
+        if (next.kind == K_RETURNS && depth == 0) break;
+        if (next.kind == EOF || next.kind == ST_SEMICOLON) {
+            throw new ParseException("A SQL Server function requires RETURNS");
+        }
+        if ("(".equals(next.image)) depth++;
+        if (")".equals(next.image)) depth--;
+        if (depth < 0) throw new ParseException("Unbalanced function parameters");
+        parts.add(getNextToken().image);
+    }
+    if (parts.size() < 3 || "(".equals(parts.get(0)) || !")".equals(parts.get(parts.size() - 1))) {
+        throw new ParseException("A SQL Server function requires a name and parameter parentheses");
+    }
+    return parts;
+}
+
+JAVACODE
+List<String> captureSqlServerRoutineBody(boolean procedure) {
+    List<String> parts = new ArrayList<String>();
+    int depth = 0;
+    while (true) {
+        Token next = getToken(1);
+        // Procedure definitions occupy the rest of their batch, including statements
+        // after an END. Their opaque bodies may contain BEGIN TRANSACTION and TRY/CATCH.
+        if (next.kind == EOF || (!procedure && next.kind == ST_SEMICOLON && depth == 0)) break;
+        if (!procedure) {
+            if (next.kind == K_BEGIN || next.kind == K_CASE) {
+                depth++;
+            } else if (next.kind == K_END) {
+                if (--depth < 0) throw new ParseException("Unmatched END in routine");
+            }
+        }
+        parts.add(getNextToken().image);
+    }
+    if (depth != 0) throw new ParseException("Unterminated SQL Server routine block");
+    if (parts.isEmpty()) throw new ParseException("A routine body is required");
+    return parts;
 }
 
 CreateSynonym CreateSynonym(boolean isUsingOrReplace):

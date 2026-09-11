@@ -382,10 +382,27 @@ public class StatementValidator extends AbstractValidator<Statement>
     @Override
     public <S> Void visit(CreateFunctionalStatement createFunctionalStatement, S context) {
         validateFeature(Feature.functionalStatement);
+        if (createFunctionalStatement
+                .getOperation() == CreateFunctionalStatement.Operation.CREATE_OR_ALTER) {
+            validateFeature(Feature.createOrAlterRoutine);
+        }
+        if (createFunctionalStatement.getReturnType() != null
+                && createFunctionalStatement.getReturnType().getTableElements() != null) {
+            createFunctionalStatement.getReturnType().getTableElements()
+                    .forEach(element -> net.sf.jsqlparser.util.TableDefinitionTraversal.visit(
+                            element,
+                            this::validateOptionalExpression, this::validateOptionalFromItem));
+        }
         if (createFunctionalStatement instanceof CreateFunction) {
-            validateFeature(Feature.createFunction);
+            validateFeature(createFunctionalStatement
+                    .getOperation() == CreateFunctionalStatement.Operation.ALTER
+                            ? Feature.alterFunction
+                            : Feature.createFunction);
         } else if (createFunctionalStatement instanceof CreateProcedure) {
-            validateFeature(Feature.createProcedure);
+            validateFeature(createFunctionalStatement
+                    .getOperation() == CreateFunctionalStatement.Operation.ALTER
+                            ? Feature.alterProcedure
+                            : Feature.createProcedure);
         }
         return null;
     }

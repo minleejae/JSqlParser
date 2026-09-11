@@ -496,7 +496,8 @@ public class StatementDeParser extends AbstractDeParser<Statement>
 
     @Override
     public <S> StringBuilder visit(CreateFunctionalStatement createFunctionalStatement, S context) {
-        builder.append(createFunctionalStatement.toString());
+        createFunctionalStatement.appendTo(builder,
+                new TableElementDeParser(builder, expressionDeParser)::deParse);
         return builder;
     }
 

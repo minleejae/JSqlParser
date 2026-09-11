@@ -15,6 +15,7 @@ import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.LikeClause;
 import net.sf.jsqlparser.statement.alter.AlterExpression;
+import net.sf.jsqlparser.statement.alter.AlterExpressionPrimaryKey;
 import net.sf.jsqlparser.statement.create.index.CreateIndex;
 import net.sf.jsqlparser.statement.create.table.CheckConstraint;
 import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
@@ -38,6 +39,23 @@ public final class TableDefinitionTraversal {
         }
         visitOptions(createIndex.getStorageParameters(), expressions);
         accept(createIndex.getWhere(), expressions);
+    }
+
+    /** Visits the structured definitions and expressions belonging to a single ALTER action. */
+    public static void visit(AlterExpression action, Consumer<Expression> expressions,
+            Consumer<Table> tables) {
+        if (action.getColDataTypeList() != null) {
+            action.getColDataTypeList().forEach(column -> visit(column, expressions, tables));
+        }
+        if (action.getIndex() != null) {
+            visit(action.getIndex(), expressions, tables);
+        }
+        if (action instanceof AlterExpressionPrimaryKey) {
+            AlterExpressionPrimaryKey primaryKey = (AlterExpressionPrimaryKey) action;
+            if (primaryKey.isUsingHash()) {
+                accept(primaryKey.getBucketCount(), expressions);
+            }
+        }
     }
 
     public static void visit(CreateTable table, Consumer<Expression> expressions,

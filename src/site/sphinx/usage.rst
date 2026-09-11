@@ -736,6 +736,8 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
       - GoogleSQL ``CREATE [UNIQUE] NULL_FILTERED INDEX`` with a separate null-filtering flag
     * - ``DORIS``
       - ``JOIN [shuffle]`` and ``JOIN [broadcast]`` distribution hints
+    * - ``COCKROACHDB``
+      - ``ALTER TABLE ... ALTER PRIMARY KEY USING COLUMNS (...)`` with optional hash sharding and storage parameters
     * - ``TERADATA``
       - ``UPDATE target FROM sources SET ...`` with the FROM clause before SET
 
@@ -751,6 +753,12 @@ Doris distribution hints require ``parser.withDialect(Dialect.DORIS)``.
 ``Join.getJoinHint()`` exposes the keyword and ``Position.AFTER_JOIN``;
 the existing SQL Server hints use ``Position.BEFORE_JOIN``. Rendering preserves
 both the position and the brackets around a Doris hint.
+
+CockroachDB primary-key changes require ``parser.withDialect(Dialect.COCKROACHDB)``.
+Their action is an ``AlterExpressionPrimaryKey`` with key elements and storage
+parameters in ``getIndex()``. ``isUsingHash()`` preserves ``USING HASH``, while
+``getBucketCount()`` holds the legacy ``WITH BUCKET_COUNT = expression`` value.
+The newer ``WITH (bucket_count = expression)`` form uses the index storage parameters.
 
 With ``Dialect.TERADATA``, ``UPDATE a FROM target a, source b SET a.id = b.id``
 uses the existing ``Update`` model's ``fromItem`` and ``joins`` properties.
@@ -953,6 +961,26 @@ handler bodies. Procedure side effects remain unknown; table discovery reports u
 procedure calls, and feature analysis remains conservative. This covers anonymous blocks
 with variable declarations, SQL statements, assignments, calls, nesting and handlers, not
 all PL/SQL declarations, loops, packages or procedure definitions.
+
+SQL Server routine declarations
+-------------------------------
+
+``Dialect.SQLSERVER`` uses a shared declaration path for ``CREATE``, ``ALTER`` and
+``CREATE OR ALTER FUNCTION/PROCEDURE``. ``CreateFunctionalStatement.getOperation()``
+identifies the operation. For functions, ``getReturnType()`` exposes scalar types,
+inline ``RETURNS TABLE``, and a return variable with ordered ``TableElement`` column
+and constraint definitions. Table elements reuse the existing definition traversal
+and deparser, including custom expression visitors.
+
+With a structured return type, ``getFunctionDeclarationParts()`` contains the name
+and parameter tokens; ``getRoutineBodyParts()`` contains the following options and
+body. These remain opaque tokens, so this does not implement a T-SQL body AST or
+resolve tables used inside a routine. Other dialects retain the existing token-list
+representation. New operations have separate validation capabilities.
+
+Parse procedure definitions one SQL Server batch at a time: a procedure consumes the
+remaining batch, including SQL after an ``END``. Client-side ``GO`` batch splitting is
+not performed by this routine declaration parser.
 
 Legacy MySQL GROUP BY ordering
 ==============================
