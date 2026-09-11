@@ -1382,7 +1382,9 @@ public class TablesNamesFinder<Void>
             }
         }
 
-        visit(update.getTable(), context);
+        if (!update.isTargetTableAlias()) {
+            visit(update.getTable(), context);
+        }
 
         if (update.getStartJoins() != null) {
             for (Join join : update.getStartJoins()) {

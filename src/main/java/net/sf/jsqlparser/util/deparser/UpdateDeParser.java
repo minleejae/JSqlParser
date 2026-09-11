@@ -70,6 +70,9 @@ public class UpdateDeParser extends AbstractDeParser<Update>
                 }
             }
         }
+        if (update.isFromBeforeSet()) {
+            update.appendFromTo(builder);
+        }
         builder.append(" SET ");
 
         deparseUpdateSetsClause(update);
@@ -78,17 +81,8 @@ public class UpdateDeParser extends AbstractDeParser<Update>
             update.getOutputClause().appendTo(builder);
         }
 
-        if (update.getFromItem() != null) {
-            builder.append(" FROM ").append(update.getFromItem());
-            if (update.getJoins() != null) {
-                for (Join join : update.getJoins()) {
-                    if (join.isSimple()) {
-                        builder.append(", ").append(join);
-                    } else {
-                        builder.append(" ").append(join);
-                    }
-                }
-            }
+        if (!update.isFromBeforeSet()) {
+            update.appendFromTo(builder);
         }
 
         deparseWhereClause(update);

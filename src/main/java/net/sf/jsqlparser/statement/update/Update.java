@@ -44,6 +44,7 @@ public class Update implements Statement {
     private PreferringClause preferringClause;
     private List<UpdateSet> updateSets;
     private FromItem fromItem;
+    private boolean fromBeforeSet;
     private List<Join> joins;
     private List<Join> startJoins;
     private OracleHint oracleHint = null;
@@ -188,6 +189,50 @@ public class Update implements Statement {
 
     public void setFromItem(FromItem fromItem) {
         this.fromItem = fromItem;
+    }
+
+    /** Whether the FROM clause precedes SET, as in Teradata joined updates. */
+    public boolean isFromBeforeSet() {
+        return fromBeforeSet;
+    }
+
+    public void setFromBeforeSet(boolean fromBeforeSet) {
+        this.fromBeforeSet = fromBeforeSet;
+    }
+
+    public Update withFromBeforeSet(boolean fromBeforeSet) {
+        setFromBeforeSet(fromBeforeSet);
+        return this;
+    }
+
+    /** Whether the Teradata target names an alias declared in this UPDATE's FROM clause. */
+    public boolean isTargetTableAlias() {
+        if (!fromBeforeSet || table == null) {
+            return false;
+        }
+        if (matchesTargetAlias(fromItem)) {
+            return true;
+        }
+        return joins != null
+                && joins.stream().anyMatch(join -> matchesTargetAlias(join.getRightItem()));
+    }
+
+    private boolean matchesTargetAlias(FromItem source) {
+        return source != null && source.getAlias() != null
+                && table.getFullyQualifiedName().equalsIgnoreCase(source.getAlias().getName());
+    }
+
+    /** Shared FROM rendering for both supported clause positions. */
+    public StringBuilder appendFromTo(StringBuilder builder) {
+        if (fromItem != null) {
+            builder.append(" FROM ").append(fromItem);
+            if (joins != null) {
+                for (Join join : joins) {
+                    builder.append(join.isSimple() ? ", " : " ").append(join);
+                }
+            }
+        }
+        return builder;
     }
 
     public List<Join> getJoins() {
@@ -337,6 +382,9 @@ public class Update implements Statement {
             }
         }
 
+        if (fromBeforeSet) {
+            appendFromTo(b);
+        }
         b.append(" SET ");
         UpdateSet.appendUpdateSetsTo(b, updateSets);
 
@@ -344,17 +392,8 @@ public class Update implements Statement {
             outputClause.appendTo(b);
         }
 
-        if (fromItem != null) {
-            b.append(" FROM ").append(fromItem);
-            if (joins != null) {
-                for (Join join : joins) {
-                    if (join.isSimple()) {
-                        b.append(", ").append(join);
-                    } else {
-                        b.append(" ").append(join);
-                    }
-                }
-            }
+        if (!fromBeforeSet) {
+            appendFromTo(b);
         }
 
         if (where != null) {

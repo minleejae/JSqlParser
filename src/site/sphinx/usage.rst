@@ -713,8 +713,16 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
       - ``withBackslashEscapeCharacter`` only, double quotes stay quoted identifiers
     * - ``INFORMIX``
       - Informix ``ALTER TABLE ... ADD CONSTRAINT`` definitions with optional trailing constraint names
+    * - ``TERADATA``
+      - ``UPDATE target FROM sources SET ...`` with the FROM clause before SET
 
 Features set explicitly *after* the preset win over it.
+
+With ``Dialect.TERADATA``, ``UPDATE a FROM target a, source b SET a.id = b.id``
+uses the existing ``Update`` model's ``fromItem`` and ``joins`` properties.
+``isFromBeforeSet()`` preserves the clause position in both SQL renderers.
+Table discovery and metadata validation recognize a target alias declared in
+that FROM clause. Other dialects retain the existing FROM-after-SET syntax.
 
 With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
 ``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``

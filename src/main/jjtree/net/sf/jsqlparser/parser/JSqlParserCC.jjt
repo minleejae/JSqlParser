@@ -4435,8 +4435,6 @@ Update Update():
     List<UpdateSet> updateSets;
     Expression where = null;
     PreferringClause preferringClause = null;
-    FromItem fromItem = null;
-    List<Join> joins = null;
     Limit limit = null;
     OptionClause optionClause = null;
     List<OrderByElement> orderByElements;
@@ -4453,13 +4451,14 @@ Update Update():
     [ LOOKAHEAD(2) <K_LOW_PRIORITY> { modifierPriority = UpdateModifierPriority.LOW_PRIORITY; }]
     [ LOOKAHEAD(2) <K_IGNORE> { modifierIgnore = true; }]
     table=TableWithAliasAndMysqlIndexHint() [ startJoins=JoinsList() ]
+    [ LOOKAHEAD(<K_FROM>, { Dialect.TERADATA.name().equals(getAsString(Feature.dialect)) })
+        UpdateFromClause(update) { update.setFromBeforeSet(true); } ]
     <K_SET> updateSets = UpdateSets() { update.setUpdateSets(updateSets); }
 
     [ outputClause = OutputClause() {update.setOutputClause(outputClause); } ]
 
-    [ LOOKAHEAD(2) <K_FROM>
-      fromItem=FromItem()
-      [ LOOKAHEAD(2) joins=JoinsList() ] ]
+    [ LOOKAHEAD(2, { !Dialect.TERADATA.name().equals(getAsString(Feature.dialect)) })
+        UpdateFromClause(update) ]
 
     [ where=WhereClause() { update.setWhere(where); } ]
     [ preferringClause=PreferringClause() { update.setPreferringClause(preferringClause); } ]
@@ -4473,11 +4472,20 @@ Update Update():
         return update.withWithItemsList(with)
               .withTable(table)
               .withStartJoins(startJoins)
-              .withFromItem(fromItem)
-              .withJoins(joins)
               .withModifierPriority(modifierPriority)
               .withModifierIgnore(modifierIgnore);
     }
+}
+
+void UpdateFromClause(Update update):
+{
+    FromItem fromItem;
+    List<Join> joins = null;
+}
+{
+    <K_FROM> fromItem=FromItem()
+    [ LOOKAHEAD(2) joins=JoinsList() ]
+    { update.setFromItem(fromItem); update.setJoins(joins); }
 }
 
 List<UpdateSet> UpdateSets():
