@@ -62,6 +62,7 @@ import net.sf.jsqlparser.statement.export.Export;
 import net.sf.jsqlparser.statement.grant.Grant;
 import net.sf.jsqlparser.statement.imprt.Import;
 import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.statement.insert.InsertBulk;
 import net.sf.jsqlparser.statement.insert.InsertConflictAction;
 import net.sf.jsqlparser.statement.insert.ParenthesedInsert;
 import net.sf.jsqlparser.statement.lock.LockStatement;
@@ -311,6 +312,13 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
             returningClause.forEach(selectItem -> selectItem.accept(selectItemVisitor, context));
             // @todo: verify why this is a list of strings and not columns
         }
+        return null;
+    }
+
+    @Override
+    public <S> T visit(InsertBulk statement, S context) {
+        fromItemVisitor.visitFromItem(statement.getTable(), context);
+        statement.visitExpressions(expression -> expression.accept(expressionVisitor, context));
         return null;
     }
 

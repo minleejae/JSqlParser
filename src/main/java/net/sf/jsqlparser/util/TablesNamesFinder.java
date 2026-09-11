@@ -139,6 +139,7 @@ import net.sf.jsqlparser.statement.export.Export;
 import net.sf.jsqlparser.statement.grant.Grant;
 import net.sf.jsqlparser.statement.imprt.Import;
 import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.statement.insert.InsertBulk;
 import net.sf.jsqlparser.statement.insert.InsertConflictAction;
 import net.sf.jsqlparser.statement.insert.InsertDuplicateAction;
 import net.sf.jsqlparser.statement.insert.OracleMultiInsertBranch;
@@ -1568,6 +1569,13 @@ public class TablesNamesFinder<Void>
     @Override
     public <S> Void visit(DoStatement statement, S context) {
         throwUnsupported(statement);
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(InsertBulk statement, S context) {
+        visit(statement.getTable(), context);
+        statement.visitExpressions(value -> value.accept(this, context));
         return null;
     }
 

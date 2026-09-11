@@ -56,6 +56,7 @@ import net.sf.jsqlparser.statement.export.Export;
 import net.sf.jsqlparser.statement.grant.Grant;
 import net.sf.jsqlparser.statement.imprt.Import;
 import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.statement.insert.InsertBulk;
 import net.sf.jsqlparser.statement.insert.ParenthesedInsert;
 import net.sf.jsqlparser.statement.lock.LockStatement;
 import net.sf.jsqlparser.statement.merge.Merge;
@@ -69,6 +70,14 @@ import net.sf.jsqlparser.statement.update.Update;
 import net.sf.jsqlparser.statement.upsert.Upsert;
 
 public interface StatementVisitor<T> {
+
+    default <S> T visit(InsertBulk statement, S context) {
+        return null;
+    }
+
+    default void visit(InsertBulk statement) {
+        this.visit(statement, null);
+    }
 
     <S> T visit(Analyze analyze, S context);
 

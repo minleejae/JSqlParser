@@ -2746,6 +2746,10 @@ Statement SingleStatement() :
                            && (getToken(4).kind == K_FUNCTION || getToken(4).kind == K_PROCEDURE))))) })
            stm = SqlServerRoutine()
            |
+            LOOKAHEAD({ Dialect.SQLSERVER.name().equals(getAsString(Feature.dialect))
+                    && getToken(1).kind == K_INSERT && "BULK".equalsIgnoreCase(getToken(2).image) })
+            stm = InsertBulk()
+            |
            LOOKAHEAD(3) (
                 [ LOOKAHEAD(2) with=WithList() ]
                 (
@@ -4746,6 +4750,77 @@ List<Partition> Partitions():
     {
         return partitions;
     }
+}
+
+InsertBulk InsertBulk():
+{
+    InsertBulk statement = new InsertBulk();
+    Table table;
+    ColumnDefinition column;
+    InsertBulk.Option option;
+    Set<InsertBulk.Option.Kind> kinds = EnumSet.noneOf(InsertBulk.Option.Kind.class);
+}
+{
+    <K_INSERT> AccessKeyword("BULK") table=Table() { statement.setTable(table); }
+    "(" column=InsertBulkColumn() { statement.getColumns().add(column); }
+    ( "," column=InsertBulkColumn() { statement.getColumns().add(column); } )* ")"
+    [ <K_WITH> "(" option=InsertBulkOption() {
+        statement.getOptions().add(option); kinds.add(option.getKind());
+      }
+      ( "," option=InsertBulkOption() {
+          requireDdlSyntax(kinds.add(option.getKind()), "Duplicate INSERT BULK option");
+          statement.getOptions().add(option);
+      } )* ")" ]
+    { return statement; }
+}
+
+ColumnDefinition InsertBulkColumn():
+{
+    String name;
+    String collation;
+    ColDataType type;
+    ColumnDefinition column;
+}
+{
+    name=RelObjectName() type=ColDataType() { column = new ColumnDefinition(name, type); }
+    [ <K_COLLATE> collation=RelObjectName() { column.setColumnSpecs(Arrays.asList("COLLATE", collation)); } ]
+    { return column; }
+}
+
+InsertBulk.Option InsertBulkOption():
+{
+    String name;
+    Token value;
+    Column column;
+    Token direction;
+    OrderByElement order;
+    InsertBulk.Option option;
+}
+{
+    (
+        <K_ORDER> { option = new InsertBulk.Option(InsertBulk.Option.Kind.ORDER); }
+        "(" column=Column() {
+            order = new OrderByElement().withExpression(column);
+            option.getOrderByElements().add(order);
+        }
+        [ (direction=<K_ASC> | direction=<K_DESC>) { order.setAsc(direction.kind == K_ASC); order.setAscDescPresent(true); } ]
+        ( "," column=Column() {
+            order = new OrderByElement().withExpression(column);
+            option.getOrderByElements().add(order);
+          }
+          [ (direction=<K_ASC> | direction=<K_DESC>) { order.setAsc(direction.kind == K_ASC); order.setAscDescPresent(true); } ]
+        )* ")"
+        |
+        LOOKAHEAD({ isKeywordAhead("ROWS_PER_BATCH") }) AccessKeyword("ROWS_PER_BATCH") "=" value=<S_LONG>
+        { option = new InsertBulk.Option(InsertBulk.Option.Kind.ROWS_PER_BATCH); option.setValue(new LongValue(value.image)); }
+        |
+        name=RelObjectName() {
+            option = new InsertBulk.Option(typeDdlEnum(InsertBulk.Option.Kind.class, name));
+            requireDdlSyntax(option.getKind() != InsertBulk.Option.Kind.ORDER
+                    && option.getKind() != InsertBulk.Option.Kind.ROWS_PER_BATCH, "Missing INSERT BULK option value");
+        }
+    )
+    { return option; }
 }
 
 Insert InsertWithWithItems( List<WithItem<?>> withItems ):

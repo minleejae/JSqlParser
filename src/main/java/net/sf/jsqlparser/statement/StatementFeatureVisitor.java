@@ -61,6 +61,7 @@ import net.sf.jsqlparser.statement.export.Export;
 import net.sf.jsqlparser.statement.grant.Grant;
 import net.sf.jsqlparser.statement.imprt.Import;
 import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.statement.insert.InsertBulk;
 import net.sf.jsqlparser.statement.lock.LockStatement;
 import net.sf.jsqlparser.statement.merge.Merge;
 import net.sf.jsqlparser.statement.refresh.RefreshMaterializedViewStatement;
@@ -390,6 +391,13 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
             analysis.certain(StmtFeature.READS_DATA);
         }
         return super.visit(insert, context);
+    }
+
+    @Override
+    public <S> Void visit(InsertBulk statement, S context) {
+        analysis.claimTopLevel();
+        analysis.certain(StmtFeature.MODIFIES_DATA);
+        return super.visit(statement, context);
     }
 
     @Override

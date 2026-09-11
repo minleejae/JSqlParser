@@ -83,6 +83,7 @@ import net.sf.jsqlparser.statement.export.Export;
 import net.sf.jsqlparser.statement.grant.Grant;
 import net.sf.jsqlparser.statement.imprt.Import;
 import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.statement.insert.InsertBulk;
 import net.sf.jsqlparser.statement.insert.ParenthesedInsert;
 import net.sf.jsqlparser.statement.lock.LockStatement;
 import net.sf.jsqlparser.statement.merge.Merge;
@@ -236,6 +237,12 @@ public class StatementValidator extends AbstractValidator<Statement>
     @Override
     public <S> Void visit(DoStatement statement, S context) {
         validateFeature(Feature.doStatement);
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(InsertBulk statement, S context) {
+        getValidator(InsertBulkValidator.class).validate(statement);
         return null;
     }
 

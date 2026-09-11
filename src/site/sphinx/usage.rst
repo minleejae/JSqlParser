@@ -788,6 +788,13 @@ operators such as ``js#>>'{a}'`` and ``js#>'{a}'`` work without surrounding
 spaces. Quote identifiers containing ``#``, for example ``"js#"``. Other
 dialects retain their existing identifier and hash-comment rules.
 
+``Dialect.SQLSERVER`` enables ``INSERT BULK table (name type, ...) WITH (...)``.
+``InsertBulk`` exposes the target table, existing ``ColumnDefinition`` models,
+and ordered typed options, including ``ROWS_PER_BATCH`` and ``ORDER`` keys.
+The SQL declaration is preserved; the following binary bulk-load data stream
+is outside the SQL parser. Visitors and deparsers traverse option values and
+ordering expressions. Validation uses the ``insertBulk`` capability.
+
 With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
 ``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``
 for both ``CREATE TABLE`` and ``ALTER TABLE``. Without that dialect, these words
