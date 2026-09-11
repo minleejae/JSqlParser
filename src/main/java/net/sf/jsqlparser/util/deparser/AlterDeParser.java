@@ -12,6 +12,7 @@ package net.sf.jsqlparser.util.deparser;
 import net.sf.jsqlparser.statement.alter.Alter;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.statement.alter.AlterExpression;
+import net.sf.jsqlparser.statement.alter.AlterExpressionPrimaryKey;
 import net.sf.jsqlparser.statement.create.table.DefaultConstraint;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import java.util.Iterator;
@@ -48,6 +49,11 @@ public class AlterDeParser extends AbstractDeParser<Alter> {
     }
 
     private void deParseAction(AlterExpression action) {
+        if (action instanceof AlterExpressionPrimaryKey) {
+            ((AlterExpressionPrimaryKey) action).appendTo(builder,
+                    expression -> expression.accept(expressionVisitor, null));
+            return;
+        }
         if (action.getIndex() instanceof DefaultConstraint) {
             builder.append(action.getOperation()).append(' ');
             new TableElementDeParser(builder, expressionVisitor).deParse(action.getIndex());

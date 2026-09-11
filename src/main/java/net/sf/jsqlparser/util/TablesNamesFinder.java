@@ -1651,16 +1651,9 @@ public class TablesNamesFinder<Void>
     public <S> Void visit(Alter alter, S context) {
         for (net.sf.jsqlparser.statement.alter.AlterExpression action : alter
                 .getAlterExpressions()) {
-            if (action.getColDataTypeList() != null) {
-                action.getColDataTypeList().forEach(column -> TableDefinitionTraversal.visit(column,
-                        expression -> expression.accept(this, context),
-                        table -> visit(table, context)));
-            }
-            if (action.getIndex() != null) {
-                TableDefinitionTraversal.visit(action.getIndex(),
-                        expression -> expression.accept(this, context),
-                        table -> visit(table, context));
-            }
+            TableDefinitionTraversal.visit(action,
+                    expression -> expression.accept(this, context),
+                    table -> visit(table, context));
         }
         return alter.getTable().accept(this, context);
     }

@@ -14999,6 +14999,57 @@ AlterExpression AlterExpressionAddAlterModify():
     { return alterExp; }
 }
 
+/** Parses CockroachDB primary-key elements without legacy raw index parameters. */
+Index.ColumnParams CockroachPrimaryKeyColumn():
+{
+    Index.ColumnParams column;
+    String name;
+    Expression expression;
+    Token token;
+}
+{
+    (
+        LOOKAHEAD({ isFunctionAhead() }) expression=Function()
+        { column = new Index.ColumnParams(expression).withExpressionParenthesized(false); }
+        |
+        name=RelObjectName() { column = new Index.ColumnParams(name); }
+        |
+        "(" expression=Expression() ")" { column = new Index.ColumnParams(expression); }
+    )
+    [ (token=<S_IDENTIFIER> | token=<S_QUOTED_IDENTIFIER>) { column.setOperatorClass(token.image); } ]
+    [ (token=<K_ASC> | token=<K_DESC>) {
+        column.setSortOrder(Index.ColumnParams.SortOrder.valueOf(token.image.toUpperCase(Locale.ROOT)));
+    } ]
+    [ <K_NULLS> (token=<K_FIRST> | token=<K_LAST>) {
+        column.setNullOrdering(Index.ColumnParams.NullOrdering.valueOf(token.image.toUpperCase(Locale.ROOT)));
+    } ]
+    { return column; }
+}
+
+AlterExpressionPrimaryKey CockroachAlterPrimaryKey():
+{
+    AlterExpressionPrimaryKey action = new AlterExpressionPrimaryKey();
+    List<Index.ColumnParams> columns = new ArrayList<Index.ColumnParams>();
+    Index.ColumnParams column;
+    List<Index.Option> options;
+    Expression bucketCount;
+    Token token;
+}
+{
+    <K_ALTER> <K_PRIMARY> <K_KEY> <K_USING> <K_COLUMNS>
+    "(" column=CockroachPrimaryKeyColumn() { columns.add(column); }
+    ( "," column=CockroachPrimaryKeyColumn() { columns.add(column); } )* ")"
+    { action.getIndex().setColumns(columns); }
+    [ <K_USING> <K_HASH> { action.setUsingHash(true); }
+        [ LOOKAHEAD(<K_WITH> <S_IDENTIFIER>) <K_WITH> token=<S_IDENTIFIER> {
+            requireDdlSyntax("BUCKET_COUNT".equalsIgnoreCase(token.image), "Expected BUCKET_COUNT");
+        }
+        "=" bucketCount=Expression() { action.setBucketCount(bucketCount); } ]
+    ]
+    [ <K_WITH> options=PostgreSqlIndexOptions() { action.getIndex().setStorageParameters(options); } ]
+    { return action; }
+}
+
 /**
  * Parses all RENAME variants within ALTER TABLE.
  * Handles: RENAME [COLUMN] old TO new, RENAME [TO|AS] tablename, RENAME tablename,
@@ -15111,6 +15162,10 @@ AlterExpression AlterExpression():
 {
 
     (
+        LOOKAHEAD(<K_ALTER> <K_PRIMARY> <K_KEY>,
+                { Dialect.COCKROACHDB.name().equals(getAsString(Feature.dialect)) })
+        alterExp = CockroachAlterPrimaryKey()
+      |
         alterExp = AlterExpressionAddAlterModify()
       |
       (

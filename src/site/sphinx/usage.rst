@@ -713,8 +713,16 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
       - ``withBackslashEscapeCharacter`` only, double quotes stay quoted identifiers
     * - ``INFORMIX``
       - Informix ``ALTER TABLE ... ADD CONSTRAINT`` definitions with optional trailing constraint names
+    * - ``COCKROACHDB``
+      - ``ALTER TABLE ... ALTER PRIMARY KEY USING COLUMNS (...)`` with optional hash sharding and storage parameters
 
 Features set explicitly *after* the preset win over it.
+
+CockroachDB primary-key changes require ``parser.withDialect(Dialect.COCKROACHDB)``.
+Their action is an ``AlterExpressionPrimaryKey`` with key elements and storage
+parameters in ``getIndex()``. ``isUsingHash()`` preserves ``USING HASH``, while
+``getBucketCount()`` holds the legacy ``WITH BUCKET_COUNT = expression`` value.
+The newer ``WITH (bucket_count = expression)`` form uses the index storage parameters.
 
 Informix's constraint form requires an explicit dialect selection:
 

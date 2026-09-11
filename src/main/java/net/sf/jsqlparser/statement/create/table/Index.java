@@ -535,7 +535,7 @@ public class Index implements TableElement, Serializable {
         }
     }
 
-    /** A named PostgreSQL index option with an optional value. */
+    /** A named index storage option with an optional value. */
     public static class Option implements Serializable {
         private String name;
         private Expression value;
@@ -590,7 +590,21 @@ public class Index implements TableElement, Serializable {
 
         @Override
         public String toString() {
-            return value == null ? name : name + (useEquals ? " = " : " ") + value;
+            if (value == null) {
+                return name;
+            }
+            StringBuilder builder = new StringBuilder();
+            return appendTo(builder, expression -> builder.append(expression)).toString();
+        }
+
+        public StringBuilder appendTo(StringBuilder builder,
+                Consumer<Expression> expressionPrinter) {
+            builder.append(name);
+            if (value != null) {
+                builder.append(useEquals ? " = " : " ");
+                expressionPrinter.accept(value);
+            }
+            return builder;
         }
     }
 }
