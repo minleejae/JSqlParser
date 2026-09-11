@@ -642,6 +642,14 @@ The object model works in both directions. Build the tree from Java and print it
 Handle Parse Errors
 ==============================
 
+``CCJSqlParserUtil.parse(String, ...)`` requires a statement: null and empty string
+inputs throw ``JSQLParserException``, matching the default behavior for whitespace-only
+and comment-only input. ``CCJSqlParserUtil.parseStatements(String, ...)`` returns a new,
+mutable empty ``Statements`` list for null or empty input, as it already does for
+whitespace-only and comment-only input. This applies to the overloads with parser
+configuration callbacks and caller-provided executors; caller-provided executors remain
+open. These empty-input results replace the previous null returns of these methods.
+
 By default a syntax error aborts the whole parse. Two features let a script survive one bad statement:
 
 - ``parser.withErrorRecovery(true)`` skips to the next statement separator and returns an empty statement.

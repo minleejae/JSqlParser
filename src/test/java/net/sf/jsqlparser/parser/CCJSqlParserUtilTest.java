@@ -520,9 +520,9 @@ public class CCJSqlParserUtilTest {
     }
 
     @Test
-    void testParseEmpty() throws JSQLParserException {
-        assertNull(CCJSqlParserUtil.parse(""));
-        assertNull(CCJSqlParserUtil.parse((String) null));
+    void testParseEmpty() {
+        assertThrows(JSQLParserException.class, () -> CCJSqlParserUtil.parse(""));
+        assertThrows(JSQLParserException.class, () -> CCJSqlParserUtil.parse((String) null));
     }
 
     @Test
