@@ -776,11 +776,17 @@ Expression visitors can inspect or replace the body literal. Feature analysis
 reports ``OPAQUE``; table discovery rejects this statement because the body's
 table accesses are unknown. Validation checks the ``doStatement`` capability,
 without validating the procedural language inside the literal.
+With ``Dialect.POSTGRESQL``, ``#`` terminates an unquoted identifier, so JSON
+operators such as ``js#>>'{a}'`` and ``js#>'{a}'`` work without surrounding
+spaces. Quote identifiers containing ``#``, for example ``"js#"``. Other
+dialects retain their existing identifier and hash-comment rules.
 
 With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
 ``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``
 for both ``CREATE TABLE`` and ``ALTER TABLE``. Without that dialect, these words
 retain their existing interpretation as optional index names.
+SQL Server ``CREATE TABLE`` also accepts a trailing comma after the final column
+or table constraint. SQL output normalizes the definition by omitting that comma.
 
 ``CREATE UNIQUE NONCLUSTERED INDEX ix ON t (id)`` also requires
 ``Dialect.SQLSERVER``. Uniqueness remains in ``Index.getType()`` and clustering

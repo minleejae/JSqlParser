@@ -1769,6 +1769,14 @@ TOKEN_MGR_DECLS : {
         token.endColumn = input_stream.getEndColumn();
     }
 
+    /** Splits a longest-match identifier without losing token positions. */
+    private void truncateIdentifierToken(Token token, int length) {
+        input_stream.backup(token.image.length() - length);
+        token.image = token.image.substring(0, length);
+        token.endLine = input_stream.getEndLine();
+        token.endColumn = input_stream.getEndColumn();
+    }
+
     /**
      * Consumes the body of a block comment after the opening delimiter has been matched,
      * honouring nesting, up to and including the outermost closing delimiter. Then backs
@@ -2510,8 +2518,19 @@ TOKEN:
             && Boolean.TRUE.equals(configuration.getValue(Feature.allowHashLineComments))) {
         int hashIndex = matchedToken.image.indexOf('#');
         if (hashIndex > 0) {
-            input_stream.backup(matchedToken.image.length() - hashIndex);
-            matchedToken.image = matchedToken.image.substring(0, hashIndex);
+            truncateIdentifierToken(matchedToken, hashIndex);
+        }
+    }
+    // PostgreSQL does not allow # in unquoted identifiers. Re-lex it as an
+    // operator, including #> and #>>, even when it touches the left operand.
+    if (matchedToken.kind == S_IDENTIFIER
+            && AbstractJSqlParser.Dialect.POSTGRESQL.name().equals(configuration.getValue(Feature.dialect))) {
+        int hashIndex = matchedToken.image.indexOf('#');
+        if (hashIndex > 0) {
+            truncateIdentifierToken(matchedToken, hashIndex);
+        } else if (hashIndex == 0) {
+            truncateIdentifierToken(matchedToken, 1);
+            matchedToken.kind = S_HASH_OPERATOR;
         }
     }
 }
@@ -2532,8 +2551,7 @@ TOKEN:
             && Boolean.TRUE.equals(configuration.getValue(Feature.allowHashLineComments))) {
         int hashIndex = matchedToken.image.indexOf('#');
         if (hashIndex > 0) {
-            input_stream.backup(matchedToken.image.length() - hashIndex);
-            matchedToken.image = matchedToken.image.substring(0, hashIndex);
+            truncateIdentifierToken(matchedToken, hashIndex);
         }
     }
 }
@@ -13067,15 +13085,12 @@ CreateTable CreateTable(boolean isUsingOrReplace):
 {
     CreateTable createTable = new CreateTable();
     Table table = null;
-    List<ColumnDefinition> columnDefinitions = new ArrayList<ColumnDefinition>();
     List<TableElement> tableElements = new ArrayList<TableElement>();
+    TableElement element;
     List<String> tableOptions = new ArrayList<String>();
     List<TableOption> typedTableOptions = new ArrayList<TableOption>();
     List<String> createOptions = new ArrayList<String>();
     Token tk = null;
-    ColumnDefinition coldef = null;
-    List<Index> indexes = new ArrayList<Index>();
-    Index index = null;
     List<String> parameter = new ArrayList<String>();
     TableOption tableOption = null;
     SpannerInterleaveIn interleaveIn = null;
@@ -13088,7 +13103,6 @@ CreateTable CreateTable(boolean isUsingOrReplace):
     Table partitionOfTable = null;
     PartitionBound partitionBound = null;
     ColDataType ofType = null;
-    LikeClause likeClause = null;
 }
 {
     { createTable.setOrReplace(isUsingOrReplace);}
@@ -13111,33 +13125,12 @@ CreateTable CreateTable(boolean isUsingOrReplace):
         )
         |
             (
-                "("
-                (
-                    LOOKAHEAD(<K_LIKE>) likeClause=LikeClause() { tableElements.add(likeClause); }
-                    |
-                    LOOKAHEAD(3) index = CreateTableConstraint()
-                        { indexes.add(index); tableElements.add(index); }
-                    |
-                    coldef = CreateTableColumnDefinition(ofType != null)
-                        { columnDefinitions.add(coldef); tableElements.add(coldef); }
-                )
-
-                (
-                    ","
-                    (
-                        LOOKAHEAD(<K_LIKE>) likeClause=LikeClause() { tableElements.add(likeClause); }
-                        |
-                        LOOKAHEAD(3) (
-                            index = CreateTableConstraint()
-                            { indexes.add(index); tableElements.add(index); }
-                        )
-                        |
-                        (
-                            coldef = CreateTableColumnDefinition(ofType != null)
-                            { columnDefinitions.add(coldef); tableElements.add(coldef); }
-                        )
-                    )
+                "(" element=CreateTableElement(ofType != null) { tableElements.add(element); }
+                ( LOOKAHEAD(2) "," element=CreateTableElement(ofType != null)
+                    { tableElements.add(element); }
                 )*
+                [ LOOKAHEAD({ Dialect.SQLSERVER.name().equals(getAsString(Feature.dialect))
+                        && getToken(1).kind == K_COMMA && getToken(2).kind == CLOSING_BRACKET }) "," ]
 
                 ")"
             )
@@ -13184,6 +13177,17 @@ CreateTable CreateTable(boolean isUsingOrReplace):
             createTable.setColumns(columns);
         return createTable;
     }
+}
+
+TableElement CreateTableElement(boolean typed):
+{ TableElement element; }
+{
+    (
+        LOOKAHEAD(<K_LIKE>) element=LikeClause()
+        | LOOKAHEAD(3) element=CreateTableConstraint()
+        | element=CreateTableColumnDefinition(typed)
+    )
+    { return element; }
 }
 
 ColumnDefinition CreateTableColumnDefinition(boolean typed):
