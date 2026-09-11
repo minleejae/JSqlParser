@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.List;
 import java.util.stream.Stream;
 import net.sf.jsqlparser.JSQLParserException;
+import net.sf.jsqlparser.parser.AbstractJSqlParser.Dialect;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.statement.Statements;
 import net.sf.jsqlparser.statement.create.table.ForeignKeyIndex;
@@ -47,8 +48,8 @@ class InformixConstraintTest {
         for (String suffix : List.of("", " CONSTRAINT constraint_name",
                 " CONSTRAINT \"constraint name\"")) {
             String sql = "ALTER TABLE table_name ADD CONSTRAINT " + definition + suffix;
-            TestUtils.assertSqlCanBeParsedAndDeparsed(sql);
-            Alter statement = (Alter) CCJSqlParserUtil.parse(sql);
+            Alter statement = (Alter) TestUtils.assertSqlCanBeParsedAndDeparsed(sql, true,
+                    parser -> parser.withDialect(Dialect.INFORMIX));
             NamedConstraint constraint =
                     (NamedConstraint) statement.getAlterExpressions().get(0).getIndex();
             assertEquals(ConstraintNamePosition.AFTER, constraint.getConstraintNamePosition());
@@ -59,7 +60,8 @@ class InformixConstraintTest {
             statement.accept(new StatementDeParser(deparsed), null);
             assertEquals(statement.toString(), deparsed.toString());
             assertEquals(statement.toString(),
-                    CCJSqlParserUtil.parse(deparsed.toString()).toString());
+                    CCJSqlParserUtil.parse(deparsed.toString(),
+                            parser -> parser.withDialect(Dialect.INFORMIX)).toString());
             assertTrue(statement.toString().contains("ADD CONSTRAINT " + definition));
             if (!suffix.isEmpty()) {
                 assertTrue(statement.toString().endsWith(suffix));
@@ -67,10 +69,41 @@ class InformixConstraintTest {
         }
     }
 
+    @ParameterizedTest
+    @MethodSource("definitions")
+    void requiresInformixDialectForTrailingNames(String definition) {
+        for (String suffix : List.of(" CONSTRAINT constraint_name",
+                " CONSTRAINT \"constraint name\"")) {
+            String sql = "ALTER TABLE table_name ADD CONSTRAINT " + definition + suffix;
+            assertThrows(JSQLParserException.class, () -> CCJSqlParserUtil.parse(sql));
+            for (Dialect dialect : Dialect.values()) {
+                if (dialect != Dialect.INFORMIX) {
+                    assertThrows(JSQLParserException.class,
+                            () -> CCJSqlParserUtil.parse(sql,
+                                    parser -> parser.withDialect(dialect)),
+                            dialect.name());
+                }
+            }
+        }
+    }
+
+    @Test
+    void retainsDefaultInterpretationOfPrimaryAsConstraintName() throws Exception {
+        String sql = "ALTER TABLE t ADD CONSTRAINT PRIMARY KEY (id)";
+        Alter statement = (Alter) CCJSqlParserUtil.parse(sql);
+        NamedConstraint constraint =
+                (NamedConstraint) statement.getAlterExpressions().get(0).getIndex();
+        assertEquals("PRIMARY", constraint.getName());
+        assertEquals("KEY", constraint.getType());
+        assertEquals(ConstraintNamePosition.BEFORE, constraint.getConstraintNamePosition());
+        assertEquals(sql, statement.toString());
+    }
+
     @Test
     void exposesForeignKeyAndMutableName() throws Exception {
         Alter statement = (Alter) CCJSqlParserUtil.parse(
-                "ALTER TABLE child ADD CONSTRAINT FOREIGN KEY (id) REFERENCES parent(id) CONSTRAINT fk_child");
+                "ALTER TABLE child ADD CONSTRAINT FOREIGN KEY (id) REFERENCES parent(id) CONSTRAINT fk_child",
+                parser -> parser.withDialect(Dialect.INFORMIX));
         ForeignKeyIndex key = (ForeignKeyIndex) statement.getAlterExpressions().get(0).getIndex();
         assertEquals(List.of("id"), key.getColumnsNames());
         assertEquals("parent", key.getTable().getName());
@@ -79,14 +112,16 @@ class InformixConstraintTest {
         assertTrue(statement.toString().endsWith("REFERENCES parent(id) CONSTRAINT renamed_fk"));
         key.setName((String) null);
         assertFalse(statement.toString().contains("fk_child"));
-        assertEquals(statement.toString(), CCJSqlParserUtil.parse(statement.toString()).toString());
+        assertEquals(statement.toString(), CCJSqlParserUtil.parse(statement.toString(),
+                parser -> parser.withDialect(Dialect.INFORMIX)).toString());
     }
 
     @Test
     void keepsFollowingAlterActionsAndStatements() throws Exception {
         String sql =
                 "ALTER TABLE t ADD CONSTRAINT PRIMARY KEY (id) CONSTRAINT pk_t, ADD COLUMN note INT; SELECT 1;";
-        Statements statements = CCJSqlParserUtil.parseStatements(sql);
+        Statements statements = CCJSqlParserUtil.parseStatements(sql,
+                parser -> parser.withDialect(Dialect.INFORMIX));
         assertEquals(2, statements.size());
         assertEquals(2, ((Alter) statements.get(0)).getAlterExpressions().size());
     }
@@ -99,19 +134,23 @@ class InformixConstraintTest {
         assertEquals("CONSTRAINT pk_t PRIMARY KEY (id)", built.toString());
         for (String definition : List.of("PRIMARY KEY (id)", "UNIQUE (id)",
                 "FOREIGN KEY (id) REFERENCES parent(id)", "CHECK (id > 0)")) {
-            Alter statement =
-                    (Alter) CCJSqlParserUtil.parse("ALTER TABLE t ADD CONSTRAINT c " + definition);
-            assertEquals(ConstraintNamePosition.BEFORE,
-                    ((NamedConstraint) statement.getAlterExpressions().get(0).getIndex())
-                            .getConstraintNamePosition());
-            assertTrue(statement.toString().contains("CONSTRAINT c " + definition));
+            String sql = "ALTER TABLE t ADD CONSTRAINT c " + definition;
+            for (Alter statement : List.of((Alter) CCJSqlParserUtil.parse(sql),
+                    (Alter) CCJSqlParserUtil.parse(sql,
+                            parser -> parser.withDialect(Dialect.INFORMIX)))) {
+                assertEquals(ConstraintNamePosition.BEFORE,
+                        ((NamedConstraint) statement.getAlterExpressions().get(0).getIndex())
+                                .getConstraintNamePosition());
+                assertTrue(statement.toString().contains("CONSTRAINT c " + definition));
+            }
         }
     }
 
     @Test
     void keepsCheckExpressionVisitorAndForeignTableTraversal() throws Exception {
         Alter statement = (Alter) CCJSqlParserUtil
-                .parse("ALTER TABLE child ADD CONSTRAINT CHECK (id > 0) CONSTRAINT positive_id");
+                .parse("ALTER TABLE child ADD CONSTRAINT CHECK (id > 0) CONSTRAINT positive_id",
+                        parser -> parser.withDialect(Dialect.INFORMIX));
         CheckConstraint check =
                 (CheckConstraint) statement
                         .getAlterExpressions().get(0).getIndex();
@@ -130,8 +169,9 @@ class InformixConstraintTest {
         assertEquals("CONSTRAINT CHECK (renamed_id > 0) CONSTRAINT positive_id",
                 builder.toString());
         assertEquals(Set.of("child", "parent"),
-                TablesNamesFinder.findTables(
-                        "ALTER TABLE child ADD CONSTRAINT FOREIGN KEY (id) REFERENCES parent(id) CONSTRAINT fk"));
+                new TablesNamesFinder<>().getTables(CCJSqlParserUtil.parse(
+                        "ALTER TABLE child ADD CONSTRAINT FOREIGN KEY (id) REFERENCES parent(id) CONSTRAINT fk",
+                        parser -> parser.withDialect(Dialect.INFORMIX))));
     }
 
     @Test
@@ -141,7 +181,9 @@ class InformixConstraintTest {
                 "ALTER TABLE t ADD CONSTRAINT UNIQUE (id) CONSTRAINT a CONSTRAINT b",
                 "ALTER TABLE t ADD CONSTRAINT FOREIGN KEY (id) CONSTRAINT fk",
                 "ALTER TABLE t MODIFY CONSTRAINT UNIQUE (id) CONSTRAINT uk")) {
-            assertThrows(JSQLParserException.class, () -> CCJSqlParserUtil.parse(sql));
+            assertThrows(JSQLParserException.class,
+                    () -> CCJSqlParserUtil.parse(sql,
+                            parser -> parser.withDialect(Dialect.INFORMIX)));
         }
     }
 }

@@ -14734,7 +14734,8 @@ AlterExpression AlterExpressionAddAlterModify():
         }
         |
         LOOKAHEAD(<K_CONSTRAINT> (<K_PRIMARY> <K_KEY> | <K_FOREIGN> <K_KEY>
-                | <K_UNIQUE> | <K_CHECK>) "(")
+                | <K_UNIQUE> | <K_CHECK>) "(",
+                { Dialect.INFORMIX.name().equals(getAsString(Feature.dialect)) })
         index=InformixConstraint() {
             requireDdlSyntax(alterExp.getOperation() == AlterOperation.ADD,
                     "Informix constraint definitions require ADD");

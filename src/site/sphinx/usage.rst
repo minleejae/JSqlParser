@@ -711,8 +711,19 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
       - ``withDoubleQuotedStrings``, ``withBackslashEscapeCharacter``, any-whitespace rule for adjacent string literals
     * - ``SNOWFLAKE``
       - ``withBackslashEscapeCharacter`` only, double quotes stay quoted identifiers
+    * - ``INFORMIX``
+      - Informix ``ALTER TABLE ... ADD CONSTRAINT`` definitions with optional trailing constraint names
 
 Features set explicitly *after* the preset win over it.
+
+Informix's constraint form requires an explicit dialect selection:
+
+.. code-block:: java
+
+    Statement stmt = CCJSqlParserUtil.parse(
+            "ALTER TABLE child ADD CONSTRAINT FOREIGN KEY (id) "
+                    + "REFERENCES parent(id) CONSTRAINT fk_child",
+            parser -> parser.withDialect(Dialect.INFORMIX));
 
 The individual features
 ------------------------------
