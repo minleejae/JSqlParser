@@ -683,6 +683,8 @@ public enum Feature {
      * @see SetStatement
      */
     set,
+    /** SQL Server SET option [, option] ON | OFF. */
+    sqlServerSetOptions,
     /**
      * @see ResetStatement
      */

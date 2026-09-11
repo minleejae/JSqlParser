@@ -1725,7 +1725,9 @@ public class TablesNamesFinder<Void>
 
     @Override
     public <S> Void visit(SetStatement setStatement, S context) {
-        throwUnsupported(setStatement);
+        if (setStatement.getOnOffOptions() == null) {
+            throwUnsupported(setStatement);
+        }
         return null;
     }
 

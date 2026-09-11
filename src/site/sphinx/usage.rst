@@ -788,6 +788,13 @@ operators such as ``js#>>'{a}'`` and ``js#>'{a}'`` work without surrounding
 spaces. Quote identifiers containing ``#``, for example ``"js#"``. Other
 dialects retain their existing identifier and hash-comment rules.
 
+With ``Dialect.SQLSERVER``, ``SET NOCOUNT ON`` and grouped boolean options such as
+``SET QUOTED_IDENTIFIER, ANSI_NULLS OFF`` use ``SetStatement.getOnOffOptions()``.
+The ordered ``OnOffOption`` list and shared ``isOn()`` value are editable;
+``setOnOffOptions()`` replaces generic assignments and their scope. Both SQL
+renderers share statement punctuation while generic assignments retain expression
+visitor support. Parsing a SET directive records it without changing lexer settings.
+
 With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
 ``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``
 for both ``CREATE TABLE`` and ``ALTER TABLE``. Without that dialect, these words

@@ -9,11 +9,9 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
-import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.statement.SetStatement;
 
-import java.util.List;
 
 public class SetStatementDeParser extends AbstractDeParser<SetStatement> {
 
@@ -27,28 +25,7 @@ public class SetStatementDeParser extends AbstractDeParser<SetStatement> {
 
     @Override
     public void deParse(SetStatement set) {
-        builder.append("SET ");
-        if (set.getEffectParameter() != null) {
-            builder.append(set.getEffectParameter()).append(" ");
-        }
-        for (int i = 0; i < set.getCount(); i++) {
-            if (i > 0) {
-                builder.append(", ");
-            }
-            builder.append(set.getName(i));
-            if (set.isUseEqual(i)) {
-                builder.append(" =");
-            }
-            builder.append(" ");
-            List<Expression> expressions = set.getExpressions(i);
-            for (int j = 0; j < expressions.size(); j++) {
-                if (j > 0) {
-                    builder.append(", ");
-                }
-                expressions.get(j).accept(expressionVisitor, null);
-            }
-        }
-
+        set.appendTo(builder, expression -> expression.accept(expressionVisitor, null));
     }
 
     public ExpressionVisitor<StringBuilder> getExpressionVisitor() {

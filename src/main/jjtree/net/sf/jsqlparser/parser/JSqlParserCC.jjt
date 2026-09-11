@@ -4064,7 +4064,22 @@ SessionStatement SessionStatement():
 }
 
 SetStatement Set(): {
-    String namePart;
+    SetStatement set;
+}
+{
+    <K_SET>
+    (
+        LOOKAHEAD({ Dialect.SQLSERVER.name().equals(getAsString(Feature.dialect))
+            && getToken(1).kind == S_IDENTIFIER
+            && SetStatement.OnOffOption.fromName(getToken(1).image) != null
+            && !"=".equals(getToken(2).image) && !".".equals(getToken(2).image) })
+        set=SqlServerSetOnOffOptions()
+        | set=SetAssignments()
+    )
+    { return set; }
+}
+
+SetStatement SetAssignments(): {
     Object name;
     ExpressionList expList;
     boolean useEqual = false;
@@ -4074,7 +4089,6 @@ SetStatement Set(): {
     String effectParameter = null;
 }
 {
-    <K_SET>
     [LOOKAHEAD(3) (tk = <K_LOCAL> | tk = <K_SESSION>) {effectParameter = tk.image; } ]
     (
         LOOKAHEAD(2)
@@ -4120,6 +4134,33 @@ SetStatement Set(): {
          )
     )*
     { return set; }
+}
+
+SetStatement SqlServerSetOnOffOptions(): {
+    SetStatement set = new SetStatement();
+    List<SetStatement.OnOffOption> options = new ArrayList<SetStatement.OnOffOption>();
+    SetStatement.OnOffOption option;
+    Token name;
+    boolean on;
+}
+{
+    name=<S_IDENTIFIER>
+    {
+        option = accessEnum(SetStatement.OnOffOption.class, name.image);
+        options.add(option);
+    }
+    (
+        "," name=<S_IDENTIFIER>
+        {
+            option = accessEnum(SetStatement.OnOffOption.class, name.image);
+            options.add(option);
+        }
+    )*
+    ( <K_ON> { on = true; } | <K_OFF> { on = false; } )
+    {
+        set.setOnOffOptions(new SetStatement.OnOffOptions(options, on));
+        return set;
+    }
 }
 
 ResetStatement Reset(): {
