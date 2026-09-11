@@ -9,6 +9,10 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.statement.oracle.OracleBlock;
+import net.sf.jsqlparser.statement.oracle.OracleAssignment;
+import net.sf.jsqlparser.statement.oracle.OracleNullStatement;
+
 import net.sf.jsqlparser.statement.role.CreateRole;
 import net.sf.jsqlparser.statement.role.AlterRole;
 import net.sf.jsqlparser.statement.grant.Revoke;
@@ -65,6 +69,7 @@ import net.sf.jsqlparser.statement.select.FromItemVisitorAdapter;
 import net.sf.jsqlparser.statement.select.PivotVisitor;
 import net.sf.jsqlparser.statement.select.PivotVisitorAdapter;
 import net.sf.jsqlparser.statement.select.PlainSelect;
+import net.sf.jsqlparser.statement.select.MySqlSelectIntoClause;
 import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.select.SelectItem;
 import net.sf.jsqlparser.statement.select.SelectItemVisitor;
@@ -795,6 +800,12 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
                 analysis.certain.remove(StmtFeature.RETURNS_RESULT_SET);
             }
 
+            MySqlSelectIntoClause mySqlInto = plainSelect.getMySqlSelectIntoClause();
+            if (mySqlInto != null && mySqlInto.getType() == MySqlSelectIntoClause.Type.VARIABLES) {
+                analysis.certain(StmtFeature.MODIFIES_SESSION);
+                analysis.certain.remove(StmtFeature.RETURNS_RESULT_SET);
+            }
+
             if (plainSelect.getForMode() != null) {
                 // FOR UPDATE / FOR SHARE take row locks
                 analysis.certain(StmtFeature.MODIFIES_TRANSACTION);
@@ -986,4 +997,24 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
         }
         return null;
     }
+
+    @Override
+    public <S> Void visit(OracleBlock block, S context) {
+        analysis.claimTopLevel();
+        return super.visit(block, context);
+    }
+
+    @Override
+    public <S> Void visit(OracleAssignment assignment, S context) {
+        analysis.claimTopLevel();
+        // Assignment to a local variable is not a database write.
+        return super.visit(assignment, context);
+    }
+
+    @Override
+    public <S> Void visit(OracleNullStatement statement, S context) {
+        analysis.claimTopLevel();
+        return null;
+    }
+
 }
