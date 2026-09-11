@@ -639,6 +639,17 @@ The object model works in both directions. Build the tree from Java and print it
     Assertions.assertEquals(expectedSQLStr, builder.toString());
 
 
+ODBC timestamp intervals
+==============================
+
+In ODBC escapes such as ``{fn TIMESTAMPADD(SQL_TSI_YEAR, 2, travel_date)}`` and
+``{fn TIMESTAMPDIFF(SQL_TSI_DAY, start_date, end_date)}``, the first argument is a
+``DateUnitExpression`` for the nine standard ``SQL_TSI_*`` interval keywords.
+The original ODBC keyword is preserved on output and is not visited as a column.
+This applies only to unqualified, escaped calls with three arguments and a bare
+interval keyword. Ordinary calls, qualified names, quoted identifiers and other
+arguments keep their existing expression interpretation.
+
 Handle Parse Errors
 ==============================
 

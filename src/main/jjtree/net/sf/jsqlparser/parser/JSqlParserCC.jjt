@@ -782,6 +782,34 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         function.setExtraKeyword(getNextToken().image);
     }
 
+    private void normalizeOdbcTimestampInterval(Function function) {
+        if (!function.isEscaped() || function.getMultipartName().size() != 1
+                || !("TIMESTAMPADD".equalsIgnoreCase(function.getName())
+                     || "TIMESTAMPDIFF".equalsIgnoreCase(function.getName()))) {
+            return;
+        }
+        ExpressionList<?> parameters = function.getParameters();
+        if (parameters == null || parameters.size() != 3
+                || parameters instanceof ParenthesedExpressionList
+                || !(parameters.get(0) instanceof Column)) {
+            return;
+        }
+        Column column = (Column) parameters.get(0);
+        if (column.getTable() != null) {
+            return;
+        }
+        DateUnitExpression.DateUnit unit =
+                DateUnitExpression.DateUnit.fromOdbcInterval(column.getColumnName());
+        if (unit != null) {
+            DateUnitExpression interval = new DateUnitExpression(unit);
+            linkAST(interval, column.getASTNode());
+            ExpressionList<Expression> normalized = new ExpressionList<Expression>(parameters);
+            normalized.setASTNode(parameters.getASTNode());
+            normalized.set(0, interval);
+            function.setParameters(normalized);
+        }
+    }
+
     private boolean isKeywordArgumentAhead() {
         Token t = getToken(1);
         if (t.kind == EOF || t.image.equals(")")) return false;
@@ -10869,6 +10897,7 @@ Function Function() #Function:
 {
     (
         "{" <K_FN> function = InternalFunction(true) "}"
+        { normalizeOdbcTimestampInterval(function); }
         | LOOKAHEAD(3) function = SpecialStringFunctionWithNamedParameters()
         | function = InternalFunction(false)
     )

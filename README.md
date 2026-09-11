@@ -208,6 +208,9 @@ Background reading: the [Google research paper](https://storage.googleapis.com/g
 [BigQuery pipe syntax](https://cloud.google.com/bigquery/docs/reference/standard-sql/pipe-syntax)
 and [DuckDB FROM-first syntax](https://duckdb.org/docs/sql/query_syntax/from.html#from-first-syntax).
 
+ODBC `{fn TIMESTAMPADD(...)}` and `{fn TIMESTAMPDIFF(...)}` expose standard
+`SQL_TSI_*` interval arguments as time-unit expressions, preserving column traversal.
+
 ## Java version
 
 | JSqlParser | Runtime | Notes |
