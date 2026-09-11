@@ -464,6 +464,27 @@ public class Join extends ASTNodeAccessImpl {
         return this;
     }
 
+    /** Appends the join keyword, hint and FETCH modifier, followed by a space. */
+    public StringBuilder appendJoinKeywordTo(StringBuilder builder) {
+        if (isStraight()) {
+            builder.append("STRAIGHT_JOIN ");
+        } else if (isApply()) {
+            builder.append("APPLY ");
+        } else {
+            if (joinHint != null && joinHint.getPosition() == JoinHint.Position.BEFORE_JOIN) {
+                builder.append(joinHint).append(' ');
+            }
+            builder.append("JOIN ");
+            if (joinHint != null && joinHint.getPosition() == JoinHint.Position.AFTER_JOIN) {
+                builder.append(joinHint).append(' ');
+            }
+            if (fetch) {
+                builder.append("FETCH ");
+            }
+        }
+        return builder;
+    }
+
     @Override
     @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
     public String toString() {
@@ -510,19 +531,7 @@ public class Join extends ASTNodeAccessImpl {
                 builder.append("ARRAY ");
             }
 
-            if (isStraight()) {
-                builder.append("STRAIGHT_JOIN ");
-            } else if (isApply()) {
-                builder.append("APPLY ");
-            } else {
-                if (joinHint != null) {
-                    builder.append(joinHint).append(" ");
-                }
-                builder.append("JOIN ");
-                if (fetch) {
-                    builder.append("FETCH ");
-                }
-            }
+            appendJoinKeywordTo(builder);
 
             builder.append(fromItem).append((joinWindow != null) ? " WITHIN " + joinWindow : "");
         }

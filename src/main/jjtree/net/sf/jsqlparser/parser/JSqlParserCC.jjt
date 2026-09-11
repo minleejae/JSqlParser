@@ -7201,6 +7201,21 @@ JoinHint JoinHint():
     }
 }
 
+JoinHint DorisJoinHint():
+{
+    Token token;
+}
+{
+    "["
+    (
+        LOOKAHEAD({ isKeywordAhead("SHUFFLE") }) token=<S_IDENTIFIER>
+        |
+        LOOKAHEAD({ isKeywordAhead("BROADCAST") }) token=<S_IDENTIFIER>
+    )
+    "]"
+    { return new JoinHint(token.image, JoinHint.Position.AFTER_JOIN); }
+}
+
 Join JoinerExpression() #JoinerExpression:
 {
     Join join = new Join();
@@ -7240,6 +7255,14 @@ Join JoinerExpression() #JoinerExpression:
         (
             [ joinHint=JoinHint() {join.setJoinHint(joinHint); } ]
             <K_JOIN>
+            [ LOOKAHEAD("[", { Dialect.DORIS.name().equals(getAsString(Feature.dialect)) })
+                {
+                    if (joinHint != null) {
+                        throw new ParseException("Only one join hint is allowed per JOIN");
+                    }
+                }
+                joinHint=DorisJoinHint() { join.setJoinHint(joinHint); }
+            ]
             [ <K_FETCH> { join.setFetch(true); } ]
         )
         |

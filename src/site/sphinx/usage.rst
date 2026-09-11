@@ -713,8 +713,15 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
       - ``withBackslashEscapeCharacter`` only, double quotes stay quoted identifiers
     * - ``INFORMIX``
       - Informix ``ALTER TABLE ... ADD CONSTRAINT`` definitions with optional trailing constraint names
+    * - ``DORIS``
+      - ``JOIN [shuffle]`` and ``JOIN [broadcast]`` distribution hints
 
 Features set explicitly *after* the preset win over it.
+
+Doris distribution hints require ``parser.withDialect(Dialect.DORIS)``.
+``Join.getJoinHint()`` exposes the keyword and ``Position.AFTER_JOIN``;
+the existing SQL Server hints use ``Position.BEFORE_JOIN``. Rendering preserves
+both the position and the brackets around a Doris hint.
 
 Informix's constraint form requires an explicit dialect selection:
 
