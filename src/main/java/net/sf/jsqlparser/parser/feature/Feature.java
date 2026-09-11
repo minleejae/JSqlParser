@@ -455,6 +455,8 @@ public enum Feature {
      *
      * @see Execute
      */
+    oracleBlock,
+
     execute, executeExec, executeCall, executeExecute,
 
     /**

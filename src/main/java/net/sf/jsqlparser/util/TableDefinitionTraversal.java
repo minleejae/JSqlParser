@@ -15,6 +15,7 @@ import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.LikeClause;
 import net.sf.jsqlparser.statement.alter.AlterExpression;
+import net.sf.jsqlparser.statement.create.index.CreateIndex;
 import net.sf.jsqlparser.statement.create.table.CheckConstraint;
 import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
 import net.sf.jsqlparser.statement.create.table.ColumnOption;
@@ -28,6 +29,16 @@ import net.sf.jsqlparser.statement.create.table.TableElement;
 /** Traverses structured table definitions without interpreting legacy raw column options. */
 public final class TableDefinitionTraversal {
     private TableDefinitionTraversal() {}
+
+    public static void visit(CreateIndex createIndex, Consumer<Expression> expressions,
+            Consumer<Table> tables) {
+        accept(createIndex.getTable(), tables);
+        if (createIndex.getIndex() != null) {
+            visit(createIndex.getIndex(), expressions, tables);
+        }
+        visitOptions(createIndex.getStorageParameters(), expressions);
+        accept(createIndex.getWhere(), expressions);
+    }
 
     public static void visit(CreateTable table, Consumer<Expression> expressions,
             Consumer<Table> tables) {
