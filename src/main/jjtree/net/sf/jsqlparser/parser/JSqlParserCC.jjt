@@ -12471,6 +12471,22 @@ CreateDatabase CreateDatabase():
     }
 }
 
+/** Shares optional SQL Server constraint modifiers across CREATE and ALTER. */
+Index.Clustering SqlServerIndexClustering():
+{
+    Token token;
+    Index.Clustering clustering = null;
+}
+{
+    [ LOOKAHEAD({ Dialect.SQLSERVER.name().equals(getAsString(Feature.dialect))
+            && (isKeywordAhead("CLUSTERED") || isKeywordAhead("NONCLUSTERED")) })
+        token=<S_IDENTIFIER> {
+            clustering = Index.Clustering.valueOf(token.image.toUpperCase(Locale.ROOT));
+        }
+    ]
+    { return clustering; }
+}
+
 /** Parses PRIMARY, UNIQUE, plain, FULLTEXT, and SPATIAL indexes for CREATE and ALTER. */
 Index TableIndexSpec(boolean createContext):
 {
@@ -12482,11 +12498,13 @@ Index TableIndexSpec(boolean createContext):
     List<String> indexOptions = new ArrayList<String>();
     Index index;
     Boolean nullsDistinct = null;
+    Index.Clustering clustering = null;
 }
 {
     (
         typeToken=<K_PRIMARY> keywordToken=<K_KEY>
-        [ LOOKAHEAD({ getToken(1).kind != OPENING_BRACKET }) indexName=RelObjectName() ]
+        clustering=SqlServerIndexClustering()
+        [ LOOKAHEAD({ clustering == null && getToken(1).kind != OPENING_BRACKET }) indexName=RelObjectName() ]
         columns=IndexColumnsWithParamsList()
         TableIndexOptions(createContext, indexOptions)
         {
@@ -12502,7 +12520,8 @@ Index TableIndexSpec(boolean createContext):
             if (nullsDistinct == null) { nullsDistinct = true; }
         } ]
         [ LOOKAHEAD(2) (keywordToken=<K_KEY> | keywordToken=<K_INDEX>) ]
-        [ LOOKAHEAD({ getToken(1).kind != OPENING_BRACKET
+        clustering=SqlServerIndexClustering()
+        [ LOOKAHEAD({ clustering == null && getToken(1).kind != OPENING_BRACKET
                 && getToken(1).kind != K_USING }) indexName=RelObjectName() ]
         [ using=UsingIndexType() ]
         columns=IndexColumnsWithParamsList()
@@ -12562,7 +12581,7 @@ Index TableIndexSpec(boolean createContext):
                     .withName(indexName).withColumns(columns).withIndexSpec(indexOptions);
         }
     )
-    { index.setNullsDistinct(nullsDistinct); }
+    { index.setNullsDistinct(nullsDistinct); index.setClustering(clustering); }
     PostgreSqlConstraintOptions(index)
     { return index; }
 }
@@ -14600,6 +14619,7 @@ void AlterExpressionAddConstraint(AlterExpression alterExp):
     Table fkTable;
     List<ConstraintState> constraints = null;
     CheckConstraint checkCs = null;
+    Index.Clustering clustering = null;
 }
 {
     <K_CONSTRAINT>
@@ -14627,11 +14647,13 @@ void AlterExpressionAddConstraint(AlterExpression alterExp):
             )
             |
             ( tk=<K_PRIMARY> tk2=<K_KEY>
+                clustering=SqlServerIndexClustering()
                 columnNames=ColumnsNamesList()
                 {
                     index = new NamedConstraint()
                         .withName(sk3)
                         .withType(tk.image + " " + tk2.image)
+                        .withClustering(clustering)
                         .withColumnsNames(columnNames);
                     alterExp.setIndex(index);
                 }
@@ -14655,11 +14677,13 @@ void AlterExpressionAddConstraint(AlterExpression alterExp):
             |
             (
                 tk=<K_UNIQUE> (tk2=<K_KEY> { alterExp.setUk(true); } | tk2=<K_INDEX>)?
+                  clustering=SqlServerIndexClustering()
                   columnNames=ColumnsNamesList()
                   {
                       index = new NamedConstraint()
                         .withName(sk3)
                         .withType(tk.image + (tk2!=null?" " + tk2.image:""))
+                        .withClustering(clustering)
                         .withColumnsNames(columnNames);
                       alterExp.setIndex(index);
                   }

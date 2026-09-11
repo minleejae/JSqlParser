@@ -702,7 +702,7 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
     * - ``MYSQL``
       - ``withBackslashEscapeCharacter``, ``withHashLineComments``, ``withDoubleQuotedStrings`` (MySQL and MariaDB, the last for the default ``sql_mode``)
     * - ``SQLSERVER``
-      - ``withSquareBracketQuotation``
+      - ``withSquareBracketQuotation`` and ``CLUSTERED`` / ``NONCLUSTERED`` options on table-level primary key and unique constraints
     * - ``POSTGRESQL``, ``ANSI_SQL``
       - the newline rule for adjacent string literals
     * - ``BIGQUERY``
@@ -715,6 +715,11 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
       - Informix ``ALTER TABLE ... ADD CONSTRAINT`` definitions with optional trailing constraint names
 
 Features set explicitly *after* the preset win over it.
+
+With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
+``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``
+for both ``CREATE TABLE`` and ``ALTER TABLE``. Without that dialect, these words
+retain their existing interpretation as optional index names.
 
 Informix's constraint form requires an explicit dialect selection:
 
