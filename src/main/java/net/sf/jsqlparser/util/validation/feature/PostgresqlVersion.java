@@ -27,6 +27,7 @@ public enum PostgresqlVersion implements Version {
             EnumSet.of(// supported if used with jdbc
                     Feature.jdbcParameter,
                     Feature.jdbcNamedParameter, // expressions
+                    Feature.doStatement,
                     Feature.exprLike,
                     Feature.exprSimilarTo, // https://www.postgresql.org/docs/current/sql-select.html
                     Feature.select,

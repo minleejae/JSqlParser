@@ -599,6 +599,13 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
     }
 
     @Override
+    public <S> Void visit(DoStatement statement, S context) {
+        analysis.claimTopLevel();
+        analysis.opaque("DO");
+        return null;
+    }
+
+    @Override
     public <S> Void visit(CreateFunctionalStatement createFunctionalStatement, S context) {
         analysis.claimTopLevel();
         analysis.certain(StmtFeature.MODIFIES_SCHEMA);

@@ -773,10 +773,27 @@ containing the method name and arguments. Field access and method calls share
 the navigation grammar; expression visitors and deparsers traverse both the
 receiver and method arguments. XQuery strings remain string literals.
 
+``Dialect.POSTGRESQL`` enables ``DO [LANGUAGE name] code [LANGUAGE name]``,
+with the language clause allowed once, before or after the body.
+``DoStatement.getCode()`` is a ``StringValue`` that preserves the literal's
+quotes, dollar tag and body text. The optional language and its position have
+separate properties; an omitted language remains unspecified in the AST.
+The body is language-specific source, not a parsed PL/pgSQL statement tree.
+Expression visitors can inspect or replace the body literal. Feature analysis
+reports ``OPAQUE``; table discovery rejects this statement because the body's
+table accesses are unknown. Validation checks the ``doStatement`` capability,
+without validating the procedural language inside the literal.
+With ``Dialect.POSTGRESQL``, ``#`` terminates an unquoted identifier, so JSON
+operators such as ``js#>>'{a}'`` and ``js#>'{a}'`` work without surrounding
+spaces. Quote identifiers containing ``#``, for example ``"js#"``. Other
+dialects retain their existing identifier and hash-comment rules.
+
 With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
 ``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``
 for both ``CREATE TABLE`` and ``ALTER TABLE``. Without that dialect, these words
 retain their existing interpretation as optional index names.
+SQL Server ``CREATE TABLE`` also accepts a trailing comma after the final column
+or table constraint. SQL output normalizes the definition by omitting that comma.
 
 ``CREATE UNIQUE NONCLUSTERED INDEX ix ON t (id)`` also requires
 ``Dialect.SQLSERVER``. Uniqueness remains in ``Index.getType()`` and clustering

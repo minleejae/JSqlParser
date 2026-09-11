@@ -424,6 +424,12 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
     }
 
     @Override
+    public <S> T visit(DoStatement statement, S context) {
+        expressionVisitor.visitExpression(statement.getCode(), context);
+        return null;
+    }
+
+    @Override
     public <S> T visit(LockStatement lock, S context) {
 
         return null;
