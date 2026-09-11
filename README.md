@@ -189,6 +189,9 @@ out. `is()` answers "did the grammar prove it", `may()` answers "could it be rul
 guard uses `may()` and a dispatcher uses `is()`. Function volatility is not a syntactic property,
 so anything the caller has not declared pure stays unproven and is listed by name.
 
+Legacy MySQL `GROUP BY ... ASC/DESC` is available with `Dialect.MYSQL` and the explicit
+`withLegacyMySqlGroupBy(true)` option; modern/default parsing keeps it disabled.
+
 ## Piped SQL
 
 Support is progressing for Piped SQL, which writes queries in the order they actually
@@ -207,6 +210,9 @@ FROM Produce
 Background reading: the [Google research paper](https://storage.googleapis.com/gweb-research2023-media/pubtools/1004848.pdf),
 [BigQuery pipe syntax](https://cloud.google.com/bigquery/docs/reference/standard-sql/pipe-syntax)
 and [DuckDB FROM-first syntax](https://duckdb.org/docs/sql/query_syntax/from.html#from-first-syntax).
+
+ODBC `{fn TIMESTAMPADD(...)}` and `{fn TIMESTAMPDIFF(...)}` expose standard
+`SQL_TSI_*` interval arguments as time-unit expressions, preserving column traversal.
 
 ## Java version
 

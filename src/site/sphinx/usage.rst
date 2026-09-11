@@ -639,8 +639,27 @@ The object model works in both directions. Build the tree from Java and print it
     Assertions.assertEquals(expectedSQLStr, builder.toString());
 
 
+ODBC timestamp intervals
+==============================
+
+In ODBC escapes such as ``{fn TIMESTAMPADD(SQL_TSI_YEAR, 2, travel_date)}`` and
+``{fn TIMESTAMPDIFF(SQL_TSI_DAY, start_date, end_date)}``, the first argument is a
+``DateUnitExpression`` for the nine standard ``SQL_TSI_*`` interval keywords.
+The original ODBC keyword is preserved on output and is not visited as a column.
+This applies only to unqualified, escaped calls with three arguments and a bare
+interval keyword. Ordinary calls, qualified names, quoted identifiers and other
+arguments keep their existing expression interpretation.
+
 Handle Parse Errors
 ==============================
+
+``CCJSqlParserUtil.parse(String, ...)`` requires a statement: null and empty string
+inputs throw ``JSQLParserException``, matching the default behavior for whitespace-only
+and comment-only input. ``CCJSqlParserUtil.parseStatements(String, ...)`` returns a new,
+mutable empty ``Statements`` list for null or empty input, as it already does for
+whitespace-only and comment-only input. This applies to the overloads with parser
+configuration callbacks and caller-provided executors; caller-provided executors remain
+open. These empty-input results replace the previous null returns of these methods.
 
 By default a syntax error aborts the whole parse. Two features let a script survive one bad statement:
 
@@ -715,6 +734,8 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
       - Informix ``ALTER TABLE ... ADD CONSTRAINT`` definitions with optional trailing constraint names
     * - ``SPANNER``
       - GoogleSQL ``CREATE [UNIQUE] NULL_FILTERED INDEX`` with a separate null-filtering flag
+    * - ``DORIS``
+      - ``JOIN [shuffle]`` and ``JOIN [broadcast]`` distribution hints
 
 Features set explicitly *after* the preset win over it.
 
@@ -723,6 +744,11 @@ MySQL user-variable targets in ``SELECT ... INTO @variable`` require
 ``PlainSelect.getMySqlSelectIntoClause().getVariables()`` as ``UserVariable``
 expressions, with the clause position preserved before ``FROM`` or at the end
 of the query. They are not table targets in ``getIntoTables()``.
+
+Doris distribution hints require ``parser.withDialect(Dialect.DORIS)``.
+``Join.getJoinHint()`` exposes the keyword and ``Position.AFTER_JOIN``;
+the existing SQL Server hints use ``Position.BEFORE_JOIN``. Rendering preserves
+both the position and the brackets around a Doris hint.
 
 With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
 ``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``
@@ -939,3 +965,21 @@ representation. New operations have separate validation capabilities.
 Parse procedure definitions one SQL Server batch at a time: a procedure consumes the
 remaining batch, including SQL after an ``END``. Client-side ``GO`` batch splitting is
 not performed by this routine declaration parser.
+
+Legacy MySQL GROUP BY ordering
+==============================
+
+MySQL before 8.0.13 accepted ``ASC`` and ``DESC`` on individual ``GROUP BY`` items.
+Select the existing ``MYSQL`` dialect and explicitly enable this legacy syntax:
+
+.. code-block:: java
+
+    Statement statement = CCJSqlParserUtil.parse(
+        "SELECT a FROM t GROUP BY a DESC",
+        parser -> parser.withDialect(Dialect.MYSQL).withLegacyMySqlGroupBy(true));
+
+The option is disabled by default and does not enable this syntax in other dialects.
+``GroupByElement`` keeps its existing expression list; ``getGroupBySortDirection(index)``
+returns each explicit direction, or null when omitted. Directions follow list positions;
+replacing the expression list clears them. Validators report the separate
+``selectGroupByOrdering`` feature, which is not enabled in the MySQL 8.0 capability.
