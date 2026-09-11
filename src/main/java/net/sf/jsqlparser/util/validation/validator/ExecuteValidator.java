@@ -25,6 +25,8 @@ public class ExecuteValidator extends AbstractValidator<Execute> {
     public void validate(Execute execute) {
         for (ValidationCapability c : getCapabilities()) {
             validateFeature(c, Feature.execute);
+            validateFeature(c, ExecType.IMPLICIT.equals(execute.getExecType()),
+                    Feature.oracleBlock);
             validateFeature(c, ExecType.EXECUTE.equals(execute.getExecType()),
                     Feature.executeExecute);
             validateFeature(c, ExecType.EXEC.equals(execute.getExecType()), Feature.executeExec);

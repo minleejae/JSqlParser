@@ -9,6 +9,9 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.statement.oracle.OracleBlock;
+import net.sf.jsqlparser.statement.oracle.OracleAssignment;
+
 import net.sf.jsqlparser.statement.role.CreateRole;
 import net.sf.jsqlparser.statement.role.AlterRole;
 import net.sf.jsqlparser.statement.role.RoleOption;
@@ -334,7 +337,9 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
 
     @Override
     public <S> T visit(CreateIndex createIndex, S context) {
-
+        TableDefinitionTraversal.visit(createIndex,
+                expression -> expression.accept(expressionVisitor, context),
+                table -> table.accept(fromItemVisitor, context));
         return null;
     }
 
@@ -421,7 +426,7 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
 
     @Override
     public <S> T visit(Execute execute, S context) {
-
+        expressionVisitor.visitExpression(execute.getExprList(), context);
         return null;
     }
 
@@ -769,4 +774,19 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
         });
         return null;
     }
+
+    @Override
+    public <S> T visit(OracleBlock block, S context) {
+        block.visitChildren(expression -> expression.accept(expressionVisitor, context),
+                statement -> statement.accept(this, context));
+        return null;
+    }
+
+    @Override
+    public <S> T visit(OracleAssignment assignment, S context) {
+        assignment.getTarget().accept(expressionVisitor, context);
+        assignment.getValue().accept(expressionVisitor, context);
+        return null;
+    }
+
 }

@@ -14,6 +14,7 @@ import static java.util.stream.Collectors.toList;
 import net.sf.jsqlparser.parser.feature.Feature;
 import net.sf.jsqlparser.statement.create.index.CreateIndex;
 import net.sf.jsqlparser.statement.create.table.Index;
+import net.sf.jsqlparser.util.TableDefinitionTraversal;
 import net.sf.jsqlparser.util.validation.ValidationCapability;
 import net.sf.jsqlparser.util.validation.metadata.NamedObject;
 
@@ -38,6 +39,9 @@ public class CreateIndexValidator extends AbstractValidator<CreateIndex> {
                         NamedObject.table);
             }
         }
+        TableDefinitionTraversal.visit(createIndex, this::validateOptionalExpression, table -> {
+            // Table and index names are validated above for each capability.
+        });
     }
 
 }

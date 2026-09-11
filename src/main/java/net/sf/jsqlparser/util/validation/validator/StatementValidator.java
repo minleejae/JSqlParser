@@ -9,6 +9,10 @@
  */
 package net.sf.jsqlparser.util.validation.validator;
 
+import net.sf.jsqlparser.statement.oracle.OracleBlock;
+import net.sf.jsqlparser.statement.oracle.OracleAssignment;
+import net.sf.jsqlparser.statement.oracle.OracleNullStatement;
+
 import net.sf.jsqlparser.statement.role.CreateRole;
 import net.sf.jsqlparser.statement.role.AlterRole;
 import net.sf.jsqlparser.statement.role.RoleOption;
@@ -803,4 +807,28 @@ public class StatementValidator extends AbstractValidator<Statement>
 
         return null;
     }
+
+    @Override
+    public <S> Void visit(OracleBlock block, S context) {
+        validateFeature(Feature.block);
+        validateFeature(Feature.oracleBlock);
+        block.visitChildren(this::validateOptionalExpression,
+                statement -> statement.accept(this, context));
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(OracleAssignment assignment, S context) {
+        validateFeature(Feature.oracleBlock);
+        validateOptionalExpression(assignment.getTarget());
+        validateOptionalExpression(assignment.getValue());
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(OracleNullStatement statement, S context) {
+        validateFeature(Feature.oracleBlock);
+        return null;
+    }
+
 }
