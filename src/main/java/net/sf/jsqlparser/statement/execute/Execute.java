@@ -75,7 +75,10 @@ public class Execute implements Statement {
     }
 
     public StringBuilder appendTo(StringBuilder builder, Consumer<Expression> expressionPrinter) {
-        builder.append(execType.name()).append(' ').append(name);
+        if (execType != ExecType.IMPLICIT) {
+            builder.append(execType.name()).append(' ');
+        }
+        builder.append(name);
         if (exprList != null) {
             builder.append(' ');
             boolean brackets = exprList instanceof ParenthesedExpressionList;
@@ -111,7 +114,7 @@ public class Execute implements Statement {
     }
 
     public enum ExecType {
-        EXECUTE, EXEC, CALL;
+        EXECUTE, EXEC, CALL, IMPLICIT;
 
         public static ExecType from(String type) {
             return Enum.valueOf(ExecType.class, type.toUpperCase(Locale.ROOT));

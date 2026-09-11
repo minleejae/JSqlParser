@@ -33,6 +33,10 @@ PARSER_BEGIN(CCJSqlParser)
 
 package net.sf.jsqlparser.parser;
 
+import net.sf.jsqlparser.statement.oracle.OracleBlock;
+import net.sf.jsqlparser.statement.oracle.OracleAssignment;
+import net.sf.jsqlparser.statement.oracle.OracleNullStatement;
+
 import java.lang.reflect.Field;
 import java.lang.Integer;
 
@@ -1420,6 +1424,20 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         return Dialect.MYSQL.name().equals(dialect) || Dialect.MARIADB.name().equals(dialect);
     }
 
+    private boolean isMySqlSelectIntoAhead() {
+        if (getToken(1).kind != K_INTO) { return false; }
+        int kind = getToken(2).kind;
+        return kind == K_OUTFILE || kind == K_DUMPFILE
+                || isMySqlDialect() && (kind == S_AT_IDENTIFIER || kind == K_AT_SIGN);
+    }
+
+    private static UserVariable requireMySqlIntoVariable(UserVariable variable) throws ParseException {
+        if (variable.isDoubleAdd()) {
+            throw new ParseException("INTO requires a user variable with a single @ prefix");
+        }
+        return variable;
+    }
+
     private ExplainStatement.OptionType postgresqlExplainOptionType(String name) throws ParseException {
         try {
             return ExplainStatement.OptionType.from(name);
@@ -2669,6 +2687,10 @@ Statement SingleStatement() :
 }
 {
         (
+           LOOKAHEAD({ Dialect.ORACLE.name().equals(getAsString(Feature.dialect))
+               && (getToken(1).kind == K_DECLARE || getToken(1).kind == K_BEGIN) })
+           stm = OracleBlock()
+           |
            LOOKAHEAD(3) (
                 [ LOOKAHEAD(2) with=WithList() ]
                 (
@@ -2742,6 +2764,86 @@ Statement SingleStatement() :
             LOOKAHEAD({ Dialect.EXASOL.name().equals(getAsString(Feature.dialect)) }) ( stm = Import() | stm = Export() )
         )
         { return stm; }
+}
+
+OracleBlock OracleBlock():
+{
+    OracleBlock block = new OracleBlock();
+    OracleBlock.VariableDeclaration declaration;
+    OracleBlock.ExceptionHandler handler;
+    Statements statements;
+}
+{
+    [ <K_DECLARE> declaration=OracleVariableDeclaration() { block.getDeclarations().add(declaration); }
+      ( LOOKAHEAD({ getToken(1).kind != K_BEGIN })
+        declaration=OracleVariableDeclaration() { block.getDeclarations().add(declaration); } )* ]
+    <K_BEGIN> statements=OracleBlockStatements() { block.setStatements(statements); }
+    [ LOOKAHEAD({ isKeywordAhead("EXCEPTION") }) AccessKeyword("EXCEPTION")
+      handler=OracleExceptionHandler() { block.getExceptionHandlers().add(handler); }
+      ( handler=OracleExceptionHandler() { block.getExceptionHandlers().add(handler); } )* ]
+    <K_END>
+    { block.setSemicolonAfterEnd(true); return block; }
+}
+
+OracleBlock.VariableDeclaration OracleVariableDeclaration():
+{
+    OracleBlock.VariableDeclaration declaration = new OracleBlock.VariableDeclaration();
+    String name; ColDataType dataType; Expression initializer;
+}
+{
+    name=RelObjectName() { declaration.setName(name); }
+    [ LOOKAHEAD({ isKeywordAhead("CONSTANT") }) AccessKeyword("CONSTANT") { declaration.setConstant(true); } ]
+    dataType=ColDataType() { declaration.setDataType(dataType); }
+    [ <K_NOT> <K_NULL> { declaration.setNotNull(true); } ]
+    [ ( ":=" | <K_DEFAULT> { declaration.setInitializerOperator("DEFAULT"); } )
+      initializer=Expression() { declaration.setInitializer(initializer); } ]
+    <ST_SEMICOLON>
+    { requireDdlSyntax((!declaration.isConstant() && !declaration.isNotNull()) || declaration.getInitializer() != null,
+          "A CONSTANT or NOT NULL variable requires an initializer"); return declaration; }
+}
+
+Statements OracleBlockStatements():
+{ Statements statements = new Statements(); Statement statement; }
+{
+    statement=OracleBlockStatement() <ST_SEMICOLON> { statements.add(statement); }
+    ( LOOKAHEAD({ getToken(1).kind != K_END && getToken(1).kind != K_WHEN && !isKeywordAhead("EXCEPTION") })
+      statement=OracleBlockStatement() <ST_SEMICOLON> { statements.add(statement); } )*
+    { return statements; }
+}
+
+Statement OracleBlockStatement():
+{ Statement statement; Expression target; Expression value; }
+{
+    (
+        LOOKAHEAD({ getToken(1).kind == K_DECLARE || getToken(1).kind == K_BEGIN }) statement=OracleBlock()
+        | LOOKAHEAD(Column() ":=") target=Column() ":=" value=Expression()
+          { statement = new OracleAssignment(target, value); }
+        | LOOKAHEAD(JdbcNamedParameter() ":=") target=JdbcNamedParameter() ":=" value=Expression()
+          { statement = new OracleAssignment(target, value); }
+        | <K_NULL> { statement = new OracleNullStatement(); }
+        | LOOKAHEAD(ColumnIdentifier() ("(" | <ST_SEMICOLON>))
+          statement=OracleImplicitCall()
+        | statement=SingleStatement()
+    )
+    { return statement; }
+}
+
+Execute OracleImplicitCall():
+{ Execute call = new Execute(); ObjectNames name; ExpressionList arguments; }
+{
+    name=ColumnIdentifier() { call.setName(name.getNames()); call.setExecType(Execute.ExecType.IMPLICIT);
+      requireDdlSyntax(!Arrays.asList("RAISE", "RETURN", "GOTO", "EXIT", "CONTINUE", "LOOP", "WHILE", "FOR")
+          .contains(call.getName().toUpperCase(java.util.Locale.ROOT)), "Unsupported PL/SQL control statement"); }
+    [ LOOKAHEAD("(") arguments=ExpressionList() { call.setExprList(arguments); } ]
+    { return call; }
+}
+
+OracleBlock.ExceptionHandler OracleExceptionHandler():
+{ OracleBlock.ExceptionHandler handler = new OracleBlock.ExceptionHandler(); String name; Statements body; }
+{
+    <K_WHEN> name=TypeDdlName() { handler.getExceptions().add(name); }
+    ( <K_OR> name=TypeDdlName() { handler.getExceptions().add(name); } )*
+    <K_THEN> body=OracleBlockStatements() { handler.setStatements(body); return handler; }
 }
 
 Block Block() #Block : {
@@ -6190,12 +6292,14 @@ PlainSelect PlainSelect() #PlainSelect:
 
     selectItems=SelectItemsList()
 
-    [ LOOKAHEAD(<K_INTO> (<K_OUTFILE> | <K_DUMPFILE>))
-        mySqlSelectIntoClause = MySqlSelectIntoClause(MySqlSelectIntoClause.Position.BEFORE_FROM)
-        { plainSelect.setMySqlSelectIntoClause(mySqlSelectIntoClause); }
-    ]
     [ LOOKAHEAD(<K_INTO>)
-        intoTables = IntoClause() { plainSelect.setIntoTables(intoTables); }
+        (
+            LOOKAHEAD({ isMySqlSelectIntoAhead() })
+            mySqlSelectIntoClause = MySqlSelectIntoClause(MySqlSelectIntoClause.Position.BEFORE_FROM)
+            { plainSelect.setMySqlSelectIntoClause(mySqlSelectIntoClause); }
+            |
+            intoTables = IntoClause() { plainSelect.setIntoTables(intoTables); }
+        )
     ]
     [ LOOKAHEAD(2) <K_FROM> fromItem=FromItem()
         [ LOOKAHEAD(2) lateralViews=LateralViews() ]
@@ -6287,7 +6391,12 @@ PlainSelect PlainSelect() #PlainSelect:
         ]
         [ LOOKAHEAD(2) interpolateElements = InterpolateClause() { plainSelect.setInterpolate(interpolateElements); } ]
     ]
-    [ LOOKAHEAD(<K_INTO> (<K_OUTFILE> | <K_DUMPFILE>))
+    [ LOOKAHEAD({ isMySqlSelectIntoAhead() })
+        {
+            if (mySqlSelectIntoClause != null || intoTables != null) {
+                throw new ParseException("Only one INTO clause is allowed per SELECT");
+            }
+        }
         mySqlSelectIntoClause = MySqlSelectIntoClause(MySqlSelectIntoClause.Position.TRAILING)
         { plainSelect.setMySqlSelectIntoClause(mySqlSelectIntoClause); }
     ]
@@ -6941,6 +7050,8 @@ MySqlSelectIntoClause MySqlSelectIntoClause(MySqlSelectIntoClause.Position posit
 {
     MySqlSelectIntoClause intoClause = new MySqlSelectIntoClause().withPosition(position);
     Token token;
+    ExpressionList<UserVariable> variables = new ExpressionList<UserVariable>();
+    UserVariable variable;
 }
 {
     <K_INTO>
@@ -6951,10 +7062,30 @@ MySqlSelectIntoClause MySqlSelectIntoClause(MySqlSelectIntoClause.Position posit
         |
           <K_DUMPFILE> { intoClause.setType(MySqlSelectIntoClause.Type.DUMPFILE); }
           token=<S_CHAR_LITERAL> { intoClause.setFileName(new StringValue(token.image)); }
+        |
+          LOOKAHEAD({ isMySqlDialect() })
+          variable=MySqlIntoVariable() { variables.add(variable); }
+          ( "," variable=MySqlIntoVariable() { variables.add(variable); } )*
+          { intoClause.setType(MySqlSelectIntoClause.Type.VARIABLES); intoClause.setVariables(variables); }
     )
     {
         return intoClause;
     }
+}
+
+UserVariable MySqlIntoVariable():
+{
+    UserVariable variable;
+    Token name;
+}
+{
+    (
+        variable=UserVariable()
+        |
+        <K_AT_SIGN> (name=<S_CHAR_LITERAL> | name=<S_QUOTED_IDENTIFIER>)
+        { variable = new UserVariable("@" + name.image); }
+    )
+    { return requireMySqlIntoVariable(variable); }
 }
 
 MySqlProcedureAnalyse MySqlProcedureAnalyse():
@@ -11783,37 +11914,50 @@ Index.ColumnParams IndexColumnWithParams(): {
     List<String> parameter = null;
     Expression expression = null;
     String collation = null;
-    Token operatorClass = null;
+    String operatorClass = null;
     List<Index.Option> operatorClassParameters = null;
     Token sortOrder = null;
     Token nullOrdering = null;
     Index.ColumnParams column = null;
+    boolean postgres = Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect));
+    boolean expressionParenthesized = true;
 }
 {
     (
+        LOOKAHEAD({ Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect)) && isFunctionAhead() }) expression=Function()
+        { expressionParenthesized = false; }
+        |
         columnName=RelObjectName()
         |
         "(" expression=Expression() ")"
     )
     // MySQL prefix lengths precede all PostgreSQL key attributes.
-    [ LOOKAHEAD("(") parameter=CreateParameter() { columnParams.addAll(parameter); } ]
-    [ LOOKAHEAD(2) <K_COLLATE> collation=RelObjectName()
-        { columnParams.add("COLLATE"); columnParams.add(collation); } ]
-    [ LOOKAHEAD(2) (operatorClass=<S_IDENTIFIER> | operatorClass=<S_QUOTED_IDENTIFIER>)
+    [ LOOKAHEAD("(", { !Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect)) }) parameter=CreateParameter() { columnParams.addAll(parameter); } ]
+    [ LOOKAHEAD(2) <K_COLLATE> collation=IndexKeyAttributeName()
+        { if (!postgres) { columnParams.add("COLLATE"); columnParams.add(collation); } } ]
+    [ LOOKAHEAD(2, IndexKeyAttributeName(), {
+            getToken(1).kind == S_IDENTIFIER || getToken(1).kind == S_QUOTED_IDENTIFIER
+            || (Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect))
+                && getToken(1).kind != K_ASC && getToken(1).kind != K_DESC
+                && getToken(1).kind != K_NULLS && getToken(1).kind != K_COLLATE
+                && getToken(1).kind != K_WITH) })
+        operatorClass=IndexKeyAttributeName()
         [ LOOKAHEAD(2) operatorClassParameters=PostgreSqlIndexOptions() ]
         {
-            columnParams.add(operatorClass.image);
-            if (operatorClassParameters != null) {
-                columnParams.add(PlainSelect.getStringList(
-                        operatorClassParameters, true, true));
+            if (!postgres) {
+                columnParams.add(operatorClass);
+                if (operatorClassParameters != null) {
+                    columnParams.add(PlainSelect.getStringList(
+                            operatorClassParameters, true, true));
+                }
             }
         }
     ]
     [ LOOKAHEAD(2) (sortOrder=<K_ASC> | sortOrder=<K_DESC>)
-        { columnParams.add(sortOrder.image); } ]
+        { if (!postgres) { columnParams.add(sortOrder.image); } } ]
     [ LOOKAHEAD(2) <K_NULLS> (nullOrdering=<K_FIRST> | nullOrdering=<K_LAST>)
-        { columnParams.add("NULLS"); columnParams.add(nullOrdering.image); } ]
-    ( LOOKAHEAD(2, { getToken(1).kind != K_WITH }) parameter=CreateParameter() { columnParams.addAll(parameter); } )*
+        { if (!postgres) { columnParams.add("NULLS"); columnParams.add(nullOrdering.image); } } ]
+    ( LOOKAHEAD(2, { !Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect)) && getToken(1).kind != K_WITH }) parameter=CreateParameter() { columnParams.addAll(parameter); } )*
     {
         column = expression != null
                 ? new Index.ColumnParams(expression,
@@ -11821,8 +11965,9 @@ Index.ColumnParams IndexColumnWithParams(): {
                 : new Index.ColumnParams(columnName,
                         columnParams.isEmpty() ? null : columnParams);
         column.setCollation(collation);
+        column.setExpressionParenthesized(expressionParenthesized);
         if (operatorClass != null) {
-            column.setOperatorClass(operatorClass.image);
+            column.setOperatorClass(operatorClass);
             column.setOperatorClassParameters(operatorClassParameters);
         }
         if (sortOrder != null) {
@@ -11835,6 +11980,20 @@ Index.ColumnParams IndexColumnWithParams(): {
         }
         return column;
     }
+}
+
+/** Keeps qualified PostgreSQL collation and operator-class names out of expression parsing. */
+String IndexKeyAttributeName():
+{
+    String name;
+    String part;
+}
+{
+    name=RelObjectName()
+    ( LOOKAHEAD(".", { Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect)) })
+        "." part=RelObjectNameExt() { name += "." + part; }
+    )*
+    { return name; }
 }
 
 Index.Option PostgreSqlIndexOption():
@@ -11890,6 +12049,33 @@ Index Index(): {
     name= RelObjectNames() { return new Index().withName(name.getNames()).withType(""); }
 }
 
+/** Parses dialect-specific index modifiers while retaining the legacy single type token. */
+Index CreateIndexModifiers(CreateIndex statement):
+{
+    Index index = new Index();
+    Token token;
+    List<String> parameter;
+    Index.Clustering clustering;
+}
+{
+    (
+        LOOKAHEAD({ Dialect.SQLSERVER.name().equals(getAsString(Feature.dialect))
+                && (getToken(1).kind == K_UNIQUE || isKeywordAhead("CLUSTERED")
+                    || isKeywordAhead("NONCLUSTERED")) })
+        [ token=<K_UNIQUE> { index.setType(token.image); } ]
+        clustering=SqlServerIndexClustering() { index.setClustering(clustering); }
+        |
+        LOOKAHEAD({ Dialect.SPANNER.name().equals(getAsString(Feature.dialect))
+                && (getToken(1).kind == K_UNIQUE || isKeywordAhead("NULL_FILTERED")) })
+        [ token=<K_UNIQUE> { index.setType(token.image); } ]
+        [ LOOKAHEAD({ isKeywordAhead("NULL_FILTERED") }) token=<S_IDENTIFIER>
+            { statement.setNullFiltered(true); } ]
+        |
+        [ parameter=CreateParameter() { index.setType(parameter.get(0)); } ]
+    )
+    { return index; }
+}
+
 CreateIndex CreateIndex():
 {
     CreateIndex createIndex = new CreateIndex();
@@ -11901,26 +12087,20 @@ CreateIndex CreateIndex():
     String tableSpace = null;
     Expression where = null;
     String indexType;
-    Index index = null;
+    Index index;
     List<String> parameter = new ArrayList<String>();
     List<String> tailParameters = new ArrayList<String>();
-    List<String> name;
+    ObjectNames name;
 }
 {
-    [ parameter=CreateParameter() ]
+    index=CreateIndexModifiers(createIndex)
 
     <K_INDEX>
     [ LOOKAHEAD({ getToken(1).kind == K_CONCURRENTLY })
         <K_CONCURRENTLY> { createIndex.setConcurrently(true); } ]
     [ LOOKAHEAD(2) <K_IF> <K_NOT> <K_EXISTS> { createIndex.setUsingIfNotExists(true);} ]
     [ LOOKAHEAD({ getToken(1).kind != K_ON && getToken(1).kind != K_USING })
-        index = Index() ]
-    {
-        if (index == null) {
-            index = new Index();
-        }
-        index.setType(parameter.isEmpty() ? null : parameter.get(0));
-    }
+        name=RelObjectNames() { index.setName(name.getNames()); } ]
     (
         LOOKAHEAD(3)(
             <K_ON> [ <K_ONLY> { createIndex.setOnly(true); } ] table=Table()

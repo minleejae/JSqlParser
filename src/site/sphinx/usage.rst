@@ -702,7 +702,7 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
     * - ``MYSQL``
       - ``withBackslashEscapeCharacter``, ``withHashLineComments``, ``withDoubleQuotedStrings`` (MySQL and MariaDB, the last for the default ``sql_mode``)
     * - ``SQLSERVER``
-      - ``withSquareBracketQuotation`` and ``CLUSTERED`` / ``NONCLUSTERED`` options on table-level primary key and unique constraints
+      - ``withSquareBracketQuotation`` and ``CLUSTERED`` / ``NONCLUSTERED`` options on table-level primary key and unique constraints and ``CREATE INDEX``
     * - ``POSTGRESQL``, ``ANSI_SQL``
       - the newline rule for adjacent string literals
     * - ``BIGQUERY``
@@ -713,10 +713,18 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
       - ``withBackslashEscapeCharacter`` only, double quotes stay quoted identifiers
     * - ``INFORMIX``
       - Informix ``ALTER TABLE ... ADD CONSTRAINT`` definitions with optional trailing constraint names
+    * - ``SPANNER``
+      - GoogleSQL ``CREATE [UNIQUE] NULL_FILTERED INDEX`` with a separate null-filtering flag
     * - ``DORIS``
       - ``JOIN [shuffle]`` and ``JOIN [broadcast]`` distribution hints
 
 Features set explicitly *after* the preset win over it.
+
+MySQL user-variable targets in ``SELECT ... INTO @variable`` require
+``Dialect.MYSQL`` or ``Dialect.MARIADB``. They are stored in
+``PlainSelect.getMySqlSelectIntoClause().getVariables()`` as ``UserVariable``
+expressions, with the clause position preserved before ``FROM`` or at the end
+of the query. They are not table targets in ``getIntoTables()``.
 
 Doris distribution hints require ``parser.withDialect(Dialect.DORIS)``.
 ``Join.getJoinHint()`` exposes the keyword and ``Position.AFTER_JOIN``;
@@ -727,6 +735,29 @@ With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
 ``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``
 for both ``CREATE TABLE`` and ``ALTER TABLE``. Without that dialect, these words
 retain their existing interpretation as optional index names.
+
+``CREATE UNIQUE NONCLUSTERED INDEX ix ON t (id)`` also requires
+``Dialect.SQLSERVER``. Uniqueness remains in ``Index.getType()`` and clustering
+is stored separately in ``Index.getClustering()``. With ``Dialect.SPANNER``,
+``CREATE UNIQUE NULL_FILTERED INDEX ix ON t (id)`` stores null filtering in
+``CreateIndex.isNullFiltered()``. An omitted clustering or null-filtering option
+is not supplied from database defaults. The Spanner preset currently selects
+this index syntax; it does not configure GoogleSQL string-literal rules.
+
+With ``Dialect.POSTGRESQL``, index keys accept schema-qualified collation and
+operator-class names, for example ``name COLLATE pg_catalog."C"
+pg_catalog.text_ops ASC NULLS LAST``. Function keys such as ``lower(name)`` are
+stored as expressions. Key attributes are available through ``getCollation()``,
+``getOperatorClass()``, ``getOperatorClassParameters()``, ``getSortOrder()`` and
+``getNullOrdering()`` on ``Index.ColumnParams``. Under this dialect these
+attributes are not duplicated in the legacy ``getParams()`` list, so changing
+or removing them is reflected when rendering SQL. Other dialects retain the
+legacy parameter representation, including MySQL prefix lengths.
+
+``CreateIndexDeParser`` and ``StatementDeParser`` pass key expressions,
+structured option values and the partial-index predicate to their expression
+visitor. ``StatementVisitorAdapter``, ``TablesNamesFinder`` and index validation
+traverse the same structured expressions.
 
 Informix's constraint form requires an explicit dialect selection:
 
@@ -879,3 +910,19 @@ References: `CREATE ROLE <https://www.postgresql.org/docs/18/sql-createrole.html
 `REVOKE <https://www.postgresql.org/docs/18/sql-revoke.html>`_,
 `ALTER DEFAULT PRIVILEGES <https://www.postgresql.org/docs/18/sql-alterdefaultprivileges.html>`_,
 `CREATE TRIGGER <https://www.postgresql.org/docs/18/sql-createtrigger.html>`_.
+
+Oracle anonymous blocks
+-----------------------
+
+With ``Dialect.ORACLE``, ``OracleBlock`` extends ``Block`` with variable declarations
+and exception handlers. Initializers and ``OracleAssignment`` values are expressions;
+nested blocks and handler bodies contain statements. Calls without ``CALL`` use
+``Execute.ExecType.IMPLICIT``, preserving qualified names, parentheses and bind arguments.
+``OracleNullStatement`` represents the PL/SQL ``NULL`` statement. Implicit calls are
+recognized inside Oracle blocks, so application procedure names need no keyword registration.
+
+Shared traversal and rendering include declaration initializers, assignments and exception
+handler bodies. Procedure side effects remain unknown; table discovery reports unsupported
+procedure calls, and feature analysis remains conservative. This covers anonymous blocks
+with variable declarations, SQL statements, assignments, calls, nesting and handlers, not
+all PL/SQL declarations, loops, packages or procedure definitions.
