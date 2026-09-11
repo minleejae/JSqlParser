@@ -46,7 +46,7 @@ public abstract class AbstractJSqlParser<P> {
                                                         AdjacentStringLiterals.WHITESPACE,
                                                         Feature.allowDoubleQuotedStrings,
                                                         Feature.allowBackslashEscapeCharacter), SNOWFLAKE(
-                                                                Feature.allowBackslashEscapeCharacter), INFORMIX, COCKROACHDB;
+                                                                Feature.allowBackslashEscapeCharacter), INFORMIX, SPANNER, COCKROACHDB;
 
         private final Set<Feature> lexerFeatures;
         private final AdjacentStringLiterals adjacentStringLiterals;

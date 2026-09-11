@@ -511,7 +511,7 @@ public class Index implements TableElement, Serializable {
             }
             appendParams(builder);
             appendCollation(builder);
-            appendOperatorClass(builder);
+            appendOperatorClass(builder, expressionPrinter);
             appendSortOrder(builder);
             appendNullOrdering(builder);
             if (exclusionOperator != null) {
@@ -531,13 +531,13 @@ public class Index implements TableElement, Serializable {
             }
         }
 
-        private void appendOperatorClass(StringBuilder builder) {
+        private void appendOperatorClass(StringBuilder builder,
+                Consumer<Expression> expressionPrinter) {
             if (operatorClass != null && !hasParam(operatorClass)) {
                 builder.append(" ").append(operatorClass);
                 if (operatorClassParameters != null && !operatorClassParameters.isEmpty()) {
-                    builder.append(" ")
-                            .append(PlainSelect.getStringList(
-                                    operatorClassParameters, true, true));
+                    builder.append(" ");
+                    Option.appendListTo(builder, operatorClassParameters, expressionPrinter);
                 }
             }
         }
@@ -559,7 +559,7 @@ public class Index implements TableElement, Serializable {
         }
     }
 
-    /** A named index storage option with an optional value. */
+    /** A named index option with an optional value. */
     public static class Option implements Serializable {
         private String name;
         private Expression value;
@@ -629,6 +629,18 @@ public class Index implements TableElement, Serializable {
                 expressionPrinter.accept(value);
             }
             return builder;
+        }
+
+        public static StringBuilder appendListTo(StringBuilder builder, List<Option> options,
+                Consumer<Expression> expressionPrinter) {
+            builder.append('(');
+            for (int i = 0; i < options.size(); i++) {
+                if (i > 0) {
+                    builder.append(", ");
+                }
+                options.get(i).appendTo(builder, expressionPrinter);
+            }
+            return builder.append(')');
         }
     }
 }

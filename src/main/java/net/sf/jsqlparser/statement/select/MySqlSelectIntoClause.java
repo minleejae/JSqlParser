@@ -10,7 +10,11 @@
 package net.sf.jsqlparser.statement.select;
 
 import java.io.Serializable;
+import java.util.function.Consumer;
+import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.StringValue;
+import net.sf.jsqlparser.expression.UserVariable;
+import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.parser.ASTNodeAccessImpl;
 
 public class MySqlSelectIntoClause extends ASTNodeAccessImpl implements Serializable {
@@ -20,7 +24,7 @@ public class MySqlSelectIntoClause extends ASTNodeAccessImpl implements Serializ
     }
 
     public enum Type {
-        OUTFILE, DUMPFILE
+        OUTFILE, DUMPFILE, VARIABLES
     }
 
     public enum FieldsKeyword {
@@ -30,6 +34,7 @@ public class MySqlSelectIntoClause extends ASTNodeAccessImpl implements Serializ
     private Position position = Position.TRAILING;
     private Type type;
     private StringValue fileName;
+    private ExpressionList<UserVariable> variables;
     private String characterSet;
     private FieldsKeyword fieldsKeyword;
     private StringValue fieldsTerminatedBy;
@@ -58,6 +63,14 @@ public class MySqlSelectIntoClause extends ASTNodeAccessImpl implements Serializ
 
     public void setType(Type type) {
         this.type = type;
+    }
+
+    public ExpressionList<UserVariable> getVariables() {
+        return variables;
+    }
+
+    public void setVariables(ExpressionList<UserVariable> variables) {
+        this.variables = variables;
     }
 
     public StringValue getFileName() {
@@ -142,7 +155,19 @@ public class MySqlSelectIntoClause extends ASTNodeAccessImpl implements Serializ
     }
 
     public StringBuilder appendTo(StringBuilder builder) {
-        builder.append("INTO ").append(type);
+        return appendTo(builder, expression -> builder.append(expression));
+    }
+
+    /** Shares INTO rendering while allowing deparsers to visit variable targets. */
+    public StringBuilder appendTo(StringBuilder builder, Consumer<Expression> expressionRenderer) {
+        builder.append("INTO ");
+        if (type == Type.VARIABLES) {
+            if (variables != null) {
+                expressionRenderer.accept(variables);
+            }
+            return builder;
+        }
+        builder.append(type);
         appendFileName(builder);
         appendCharacterSet(builder);
         appendFieldsClause(builder);
