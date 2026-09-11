@@ -786,6 +786,34 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         function.setExtraKeyword(getNextToken().image);
     }
 
+    private void normalizeOdbcTimestampInterval(Function function) {
+        if (!function.isEscaped() || function.getMultipartName().size() != 1
+                || !("TIMESTAMPADD".equalsIgnoreCase(function.getName())
+                     || "TIMESTAMPDIFF".equalsIgnoreCase(function.getName()))) {
+            return;
+        }
+        ExpressionList<?> parameters = function.getParameters();
+        if (parameters == null || parameters.size() != 3
+                || parameters instanceof ParenthesedExpressionList
+                || !(parameters.get(0) instanceof Column)) {
+            return;
+        }
+        Column column = (Column) parameters.get(0);
+        if (column.getTable() != null) {
+            return;
+        }
+        DateUnitExpression.DateUnit unit =
+                DateUnitExpression.DateUnit.fromOdbcInterval(column.getColumnName());
+        if (unit != null) {
+            DateUnitExpression interval = new DateUnitExpression(unit);
+            linkAST(interval, column.getASTNode());
+            ExpressionList<Expression> normalized = new ExpressionList<Expression>(parameters);
+            normalized.setASTNode(parameters.getASTNode());
+            normalized.set(0, interval);
+            function.setParameters(normalized);
+        }
+    }
+
     private boolean isKeywordArgumentAhead() {
         Token t = getToken(1);
         if (t.kind == EOF || t.image.equals(")")) return false;
@@ -2357,6 +2385,8 @@ TOKEN : /* Date/Time with time zones */
 
 TOKEN : /* Data Types */
 {
+    // Dedicated keyword tokens (e.g. K_BINARY/K_CHAR) are consumed by DataType().
+    // Repeating them here cannot match DATA_TYPE and causes unreachable-token warnings.
     <DATA_TYPE: ( <TYPE_BIT> | <TYPE_BLOB> | <TYPE_BOOLEAN> |  <TYPE_ENUM>
                      | <TYPE_REAL> | <TYPE_DOUBLE> | <TYPE_UUID> | <TYPE_MAP>| <TYPE_TINYINT> | <TYPE_SMALLINT>
                      | <TYPE_INTEGER> | <TYPE_BIGINT> | <TYPE_HUGEINT> | <TYPE_UTINYINT> | <TYPE_USMALLINT>
@@ -2365,15 +2395,15 @@ TOKEN : /* Data Types */
               ) >
 
     | <#TYPE_BIT:  "BISTRING">
-    | <#TYPE_BLOB: "BLOB" | "BYTEA" | <K_BINARY> | "VARBINARY" | <K_BYTES> >
-    | <#TYPE_BOOLEAN: <K_BOOLEAN> | "BOOL" >
+    | <#TYPE_BLOB: "BLOB" | "BYTEA" | "VARBINARY" >
+    | <#TYPE_BOOLEAN: "BOOL" >
     | <#TYPE_CLOB: "CLOB">
     | <#TYPE_ENUM: "ENUM" >
     | <#TYPE_MAP: "MAP" >
     | <#TYPE_DECIMAL: "DECIMAL" | "NUMBER" | "NUMERIC" >
     | <#TYPE_TINYINT: "TINYINT" | "INT1" >
     | <#TYPE_SMALLINT: "SMALLINT" | "INT2" | "SHORT" >
-    | <#TYPE_INTEGER: ( "INTEGER" | "INT" | "INT4" | <K_SIGNED> | <K_UNSIGNED> ) >
+    | <#TYPE_INTEGER: ( "INTEGER" | "INT" | "INT4" ) >
     | <#TYPE_BIGINT: "BIGINT" | "INT8" | "LONG" >
     | <#TYPE_HUGEINT: "HUGEINT" >
     | <#TYPE_UTINYINT: "UTINYINT" >
@@ -2383,7 +2413,7 @@ TOKEN : /* Data Types */
     | <#TYPE_UHUGEINT: "UHUGEINT" >
     | <#TYPE_REAL: "REAL" | "FLOAT4" | "FLOAT">
     | <#TYPE_DOUBLE: "DOUBLE" | "PRECISION"  | "FLOAT8" | "FLOAT64">
-    | <#TYPE_VARCHAR: "NVARCHAR" | "VARCHAR" | "NCHAR" | <K_CHAR> | "BPCHAR" | "TEXT" | "STRING" | <K_CHARACTER> | "VARYING">
+    | <#TYPE_VARCHAR: "NVARCHAR" | "VARCHAR" | "NCHAR" | "BPCHAR" | "TEXT" | "STRING" | "VARYING">
     | <#TYPE_TIME: "TIMETZ" >
     | <#TYPE_TIMESTAMP: "TIMESTAMP_NS" | "TIMESTAMP_MS" | "TIMESTAMP_S"  >
 
@@ -5866,7 +5896,8 @@ String SetOperationModifier():
              [ ( tk=<K_ALL> | tk="DISTINCT")  { modifier+=tk.image; } ]
             <K_BY> <K_NAME> { modifier+= " BY NAME"; }
             [
-                "MATCHING" { modifier+= " MATCHING"; }
+                LOOKAHEAD({ isKeywordAhead("MATCHING") })
+                ContextualKeyword("MATCHING") { modifier+= " MATCHING"; }
                 "("
                 identifier = RelObjectName() { modifier+="(" + identifier; }
                 ("," identifier = RelObjectName()  { modifier+=", " + identifier; })*
@@ -7360,6 +7391,21 @@ JoinHint JoinHint():
     }
 }
 
+JoinHint DorisJoinHint():
+{
+    Token token;
+}
+{
+    "["
+    (
+        LOOKAHEAD({ isKeywordAhead("SHUFFLE") }) token=<S_IDENTIFIER>
+        |
+        LOOKAHEAD({ isKeywordAhead("BROADCAST") }) token=<S_IDENTIFIER>
+    )
+    "]"
+    { return new JoinHint(token.image, JoinHint.Position.AFTER_JOIN); }
+}
+
 Join JoinerExpression() #JoinerExpression:
 {
     Join join = new Join();
@@ -7399,6 +7445,14 @@ Join JoinerExpression() #JoinerExpression:
         (
             [ joinHint=JoinHint() {join.setJoinHint(joinHint); } ]
             <K_JOIN>
+            [ LOOKAHEAD("[", { Dialect.DORIS.name().equals(getAsString(Feature.dialect)) })
+                {
+                    if (joinHint != null) {
+                        throw new ParseException("Only one join hint is allowed per JOIN");
+                    }
+                }
+                joinHint=DorisJoinHint() { join.setJoinHint(joinHint); }
+            ]
             [ <K_FETCH> { join.setFetch(true); } ]
         )
         |
@@ -7735,7 +7789,13 @@ GroupByElement GroupByColumnReferences():
         )
         |
         (
-            list = ExpressionList() { groupBy.setGroupByExpressions(list); }
+            (
+                LOOKAHEAD({ getAsBoolean(Feature.allowLegacyMySqlGroupBy)
+                        && "MYSQL".equals(getAsString(Feature.dialect)) })
+                LegacyMySqlGroupByExpressions(groupBy)
+                |
+                list = ExpressionList() { groupBy.setGroupByExpressions(list); }
+            )
             (
                 LOOKAHEAD(2) <K_GROUPING> <K_SETS>
                 "("
@@ -7749,6 +7809,27 @@ GroupByElement GroupByColumnReferences():
     {
         return groupBy;
     }
+}
+
+void LegacyMySqlGroupByExpressions(GroupByElement groupBy):
+{}
+{
+    LegacyMySqlGroupByExpression(groupBy)
+    ( LOOKAHEAD(2) "," LegacyMySqlGroupByExpression(groupBy) )*
+}
+
+void LegacyMySqlGroupByExpression(GroupByElement groupBy):
+{
+    Expression expression;
+    Token direction;
+}
+{
+    expression = Expression() { groupBy.getGroupByExpressionList().add(expression); }
+    [ LOOKAHEAD(2) (direction=<K_ASC> | direction=<K_DESC>) {
+        groupBy.setGroupBySortDirection(groupBy.getGroupByExpressionList().size() - 1,
+                direction.kind == K_ASC ? GroupByElement.SortDirection.ASC
+                        : GroupByElement.SortDirection.DESC);
+    } ]
 }
 
 ExpressionList<Expression> GroupingSet():
@@ -11008,6 +11089,7 @@ Function Function() #Function:
 {
     (
         "{" <K_FN> function = InternalFunction(true) "}"
+        { normalizeOdbcTimestampInterval(function); }
         | LOOKAHEAD(3) function = SpecialStringFunctionWithNamedParameters()
         | function = InternalFunction(false)
     )
@@ -15714,14 +15796,14 @@ AlterSystemStatement AlterSystemStatement():
         |
         (
             <K_ENABLE>  (
-                            "DISTRIBUTED" "RECOVERY" { operation = AlterSystemOperation.ENABLE_DISTRIBUTED_RECOVERY; }
+                            ContextualKeyword("DISTRIBUTED") ContextualKeyword("RECOVERY") { operation = AlterSystemOperation.ENABLE_DISTRIBUTED_RECOVERY; }
                             | <K_RESTRICTED> <K_SESSION> { operation = AlterSystemOperation.ENABLE_DISTRIBUTED_RECOVERY; }
                         )
         )
         |
         (
             <K_DISABLE> (
-                            "DISTRIBUTED" "RECOVERY" { operation = AlterSystemOperation.DISABLE_DISTRIBUTED_RECOVERY; }
+                            ContextualKeyword("DISTRIBUTED") ContextualKeyword("RECOVERY") { operation = AlterSystemOperation.DISABLE_DISTRIBUTED_RECOVERY; }
                             | <K_RESTRICTED> <K_SESSION> { operation = AlterSystemOperation.DISABLE_RESTRICTED_SESSION; }
                         )
         )
@@ -15874,6 +15956,17 @@ Comment Comment():
     )
     {
         return result;
+    }
+}
+
+/** Consumes a keyword that remains an ordinary identifier outside this grammar context. */
+void ContextualKeyword(String expected):
+{ Token keyword; }
+{
+    keyword=<S_IDENTIFIER> {
+        if (!expected.equalsIgnoreCase(keyword.image)) {
+            throw new ParseException("Expected " + expected + " but found " + keyword.image);
+        }
     }
 }
 

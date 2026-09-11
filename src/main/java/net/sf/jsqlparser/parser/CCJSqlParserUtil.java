@@ -60,6 +60,13 @@ public final class CCJSqlParserUtil {
         return statement;
     }
 
+    /**
+     * Parses a single SQL statement.
+     *
+     * @param sql the SQL statement to parse
+     * @return the parsed statement
+     * @throws JSQLParserException if the input is null, empty, or cannot be parsed
+     */
     public static Statement parse(String sql) throws JSQLParserException {
         return parse(sql, null);
     }
@@ -73,17 +80,15 @@ public final class CCJSqlParserUtil {
      * CCJSqlParserUtil.parse("select * from [mytable]", parser -> parser.withSquareBracketQuotation(true));
      * }
      *
-     * @param sql
-     * @param consumer
-     * @return
-     * @throws JSQLParserException
+     * @param sql the SQL statement to parse
+     * @param consumer parser configuration callback, or {@code null}
+     * @return the parsed statement
+     * @throws JSQLParserException if the input is null, empty, or cannot be parsed
      */
     public static Statement parse(String sql, Consumer<CCJSqlParser> consumer)
             throws JSQLParserException {
 
-        if (sql == null || sql.isEmpty()) {
-            return null;
-        }
+        requireStatementInput(sql);
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         Statement statement;
@@ -97,12 +102,19 @@ public final class CCJSqlParserUtil {
         return statement;
     }
 
+    /**
+     * Parses a single SQL statement using the caller's executor, which is left open.
+     *
+     * @param sql the SQL statement to parse
+     * @param executorService executor to use for parsing
+     * @param consumer parser configuration callback, or {@code null}
+     * @return the parsed statement
+     * @throws JSQLParserException if the input is null, empty, or cannot be parsed
+     */
     public static Statement parse(String sql, ExecutorService executorService,
             Consumer<CCJSqlParser> consumer)
             throws JSQLParserException {
-        if (sql == null || sql.isEmpty()) {
-            return null;
-        }
+        requireStatementInput(sql);
 
         Statement statement;
         // first, try to parse fast and simple
@@ -132,6 +144,12 @@ public final class CCJSqlParserUtil {
             }
         }
         return statement;
+    }
+
+    private static void requireStatementInput(String sql) throws JSQLParserException {
+        if (sql == null || sql.isEmpty()) {
+            throw new JSQLParserException("SQL statement must not be null or empty.");
+        }
     }
 
     public static CCJSqlParser newParser(String sql) {
@@ -412,20 +430,21 @@ public final class CCJSqlParserUtil {
     /**
      * Parse a statement list.
      *
-     * @return the statements parsed
+     * @return the statements parsed, or a new empty list for null or empty input
      */
     public static Statements parseStatements(String sqls) throws JSQLParserException {
-        if (sqls == null || sqls.isEmpty()) {
-            return null;
-        }
-
         return parseStatements(sqls, null);
     }
 
+    /**
+     * Parses a statement list with optional parser configuration.
+     *
+     * @return the statements parsed, or a new empty list for null or empty input
+     */
     public static Statements parseStatements(String sqls, Consumer<CCJSqlParser> consumer)
             throws JSQLParserException {
         if (sqls == null || sqls.isEmpty()) {
-            return null;
+            return new Statements();
         }
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
@@ -437,15 +456,15 @@ public final class CCJSqlParserUtil {
     }
 
     /**
-     * Parse a statement list.
+     * Parses a statement list using the caller's executor, which is left open.
      *
-     * @return the statements parsed
+     * @return the statements parsed, or a new empty list for null or empty input
      */
     public static Statements parseStatements(String sqls, ExecutorService executorService,
             Consumer<CCJSqlParser> consumer)
             throws JSQLParserException {
         if (sqls == null || sqls.isEmpty()) {
-            return null;
+            return new Statements();
         }
 
         CCJSqlParser parser = newParser(sqls);

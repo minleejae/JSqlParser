@@ -31,6 +31,9 @@ public class GroupByValidator<Void> extends AbstractValidator<GroupByElement>
     public <S> Void visit(GroupByElement groupBy, S context) {
         for (ValidationCapability c : getCapabilities()) {
             validateFeature(c, Feature.selectGroupBy);
+            if (groupBy.hasGroupBySortDirections()) {
+                validateFeature(c, Feature.selectGroupByOrdering);
+            }
             if (isNotEmpty(groupBy.getGroupingSets())) {
                 validateFeature(c, Feature.selectGroupByGroupingSets);
             }

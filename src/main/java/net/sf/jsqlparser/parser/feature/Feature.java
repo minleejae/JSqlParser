@@ -75,6 +75,8 @@ public enum Feature {
      * "GROUP BY"
      */
     selectGroupBy,
+    /** Explicit ASC/DESC on GROUP BY items in legacy MySQL. */
+    selectGroupByOrdering,
     /**
      * "GROUPING SETS"
      */
@@ -785,6 +787,9 @@ public enum Feature {
      * allow parsing of RDBMS specific syntax by switching off SQL Standard Compliant Syntax
      */
     allowPostgresSpecificSyntax(false),
+
+    /** Enables legacy GROUP BY ordering with the MYSQL dialect; disabled by default. */
+    allowLegacyMySqlGroupBy(false),
 
     // PERFORMANCE
 

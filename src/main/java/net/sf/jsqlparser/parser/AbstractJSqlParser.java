@@ -46,7 +46,7 @@ public abstract class AbstractJSqlParser<P> {
                                                         AdjacentStringLiterals.WHITESPACE,
                                                         Feature.allowDoubleQuotedStrings,
                                                         Feature.allowBackslashEscapeCharacter), SNOWFLAKE(
-                                                                Feature.allowBackslashEscapeCharacter), INFORMIX, SPANNER, TERADATA;
+                                                                Feature.allowBackslashEscapeCharacter), INFORMIX, SPANNER, DORIS, TERADATA;
 
         private final Set<Feature> lexerFeatures;
         private final AdjacentStringLiterals adjacentStringLiterals;
@@ -100,6 +100,11 @@ public abstract class AbstractJSqlParser<P> {
 
     public P withUnsupportedStatements(boolean allowUnsupportedStatements) {
         return withFeature(Feature.allowUnsupportedStatements, allowUnsupportedStatements);
+    }
+
+    /** Enables GROUP BY ASC/DESC for MySQL versions before 8.0.13. Requires MYSQL dialect. */
+    public P withLegacyMySqlGroupBy(boolean enabled) {
+        return withFeature(Feature.allowLegacyMySqlGroupBy, enabled);
     }
 
     public P withTimeOut(long timeOutMillSeconds) {
