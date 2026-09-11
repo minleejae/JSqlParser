@@ -91,6 +91,7 @@ public class NamedConstraint extends Index {
         String tail = getType()
                 + nullsDistinctClause()
                 + keyword
+                + clusteringClause()
                 + (indexName != null ? " " + indexName : "")
                 + (getUsing() != null ? " USING " + getUsing() : "")
                 + (getColumns() == null ? ""
@@ -110,6 +111,12 @@ public class NamedConstraint extends Index {
 
     public NamedConstraint withIndexName(String indexName) {
         setIndexName(indexName);
+        return this;
+    }
+
+    @Override
+    public NamedConstraint withClustering(Clustering clustering) {
+        setClustering(clustering);
         return this;
     }
 
