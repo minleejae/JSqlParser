@@ -2339,6 +2339,8 @@ TOKEN : /* Date/Time with time zones */
 
 TOKEN : /* Data Types */
 {
+    // Dedicated keyword tokens (e.g. K_BINARY/K_CHAR) are consumed by DataType().
+    // Repeating them here cannot match DATA_TYPE and causes unreachable-token warnings.
     <DATA_TYPE: ( <TYPE_BIT> | <TYPE_BLOB> | <TYPE_BOOLEAN> |  <TYPE_ENUM>
                      | <TYPE_REAL> | <TYPE_DOUBLE> | <TYPE_UUID> | <TYPE_MAP>| <TYPE_TINYINT> | <TYPE_SMALLINT>
                      | <TYPE_INTEGER> | <TYPE_BIGINT> | <TYPE_HUGEINT> | <TYPE_UTINYINT> | <TYPE_USMALLINT>
@@ -2347,15 +2349,15 @@ TOKEN : /* Data Types */
               ) >
 
     | <#TYPE_BIT:  "BISTRING">
-    | <#TYPE_BLOB: "BLOB" | "BYTEA" | <K_BINARY> | "VARBINARY" | <K_BYTES> >
-    | <#TYPE_BOOLEAN: <K_BOOLEAN> | "BOOL" >
+    | <#TYPE_BLOB: "BLOB" | "BYTEA" | "VARBINARY" >
+    | <#TYPE_BOOLEAN: "BOOL" >
     | <#TYPE_CLOB: "CLOB">
     | <#TYPE_ENUM: "ENUM" >
     | <#TYPE_MAP: "MAP" >
     | <#TYPE_DECIMAL: "DECIMAL" | "NUMBER" | "NUMERIC" >
     | <#TYPE_TINYINT: "TINYINT" | "INT1" >
     | <#TYPE_SMALLINT: "SMALLINT" | "INT2" | "SHORT" >
-    | <#TYPE_INTEGER: ( "INTEGER" | "INT" | "INT4" | <K_SIGNED> | <K_UNSIGNED> ) >
+    | <#TYPE_INTEGER: ( "INTEGER" | "INT" | "INT4" ) >
     | <#TYPE_BIGINT: "BIGINT" | "INT8" | "LONG" >
     | <#TYPE_HUGEINT: "HUGEINT" >
     | <#TYPE_UTINYINT: "UTINYINT" >
@@ -2365,7 +2367,7 @@ TOKEN : /* Data Types */
     | <#TYPE_UHUGEINT: "UHUGEINT" >
     | <#TYPE_REAL: "REAL" | "FLOAT4" | "FLOAT">
     | <#TYPE_DOUBLE: "DOUBLE" | "PRECISION"  | "FLOAT8" | "FLOAT64">
-    | <#TYPE_VARCHAR: "NVARCHAR" | "VARCHAR" | "NCHAR" | <K_CHAR> | "BPCHAR" | "TEXT" | "STRING" | <K_CHARACTER> | "VARYING">
+    | <#TYPE_VARCHAR: "NVARCHAR" | "VARCHAR" | "NCHAR" | "BPCHAR" | "TEXT" | "STRING" | "VARYING">
     | <#TYPE_TIME: "TIMETZ" >
     | <#TYPE_TIMESTAMP: "TIMESTAMP_NS" | "TIMESTAMP_MS" | "TIMESTAMP_S"  >
 
@@ -5756,7 +5758,8 @@ String SetOperationModifier():
              [ ( tk=<K_ALL> | tk="DISTINCT")  { modifier+=tk.image; } ]
             <K_BY> <K_NAME> { modifier+= " BY NAME"; }
             [
-                "MATCHING" { modifier+= " MATCHING"; }
+                LOOKAHEAD({ isKeywordAhead("MATCHING") })
+                ContextualKeyword("MATCHING") { modifier+= " MATCHING"; }
                 "("
                 identifier = RelObjectName() { modifier+="(" + identifier; }
                 ("," identifier = RelObjectName()  { modifier+=", " + identifier; })*
@@ -15526,14 +15529,14 @@ AlterSystemStatement AlterSystemStatement():
         |
         (
             <K_ENABLE>  (
-                            "DISTRIBUTED" "RECOVERY" { operation = AlterSystemOperation.ENABLE_DISTRIBUTED_RECOVERY; }
+                            ContextualKeyword("DISTRIBUTED") ContextualKeyword("RECOVERY") { operation = AlterSystemOperation.ENABLE_DISTRIBUTED_RECOVERY; }
                             | <K_RESTRICTED> <K_SESSION> { operation = AlterSystemOperation.ENABLE_DISTRIBUTED_RECOVERY; }
                         )
         )
         |
         (
             <K_DISABLE> (
-                            "DISTRIBUTED" "RECOVERY" { operation = AlterSystemOperation.DISABLE_DISTRIBUTED_RECOVERY; }
+                            ContextualKeyword("DISTRIBUTED") ContextualKeyword("RECOVERY") { operation = AlterSystemOperation.DISABLE_DISTRIBUTED_RECOVERY; }
                             | <K_RESTRICTED> <K_SESSION> { operation = AlterSystemOperation.DISABLE_RESTRICTED_SESSION; }
                         )
         )
@@ -15686,6 +15689,17 @@ Comment Comment():
     )
     {
         return result;
+    }
+}
+
+/** Consumes a keyword that remains an ordinary identifier outside this grammar context. */
+void ContextualKeyword(String expected):
+{ Token keyword; }
+{
+    keyword=<S_IDENTIFIER> {
+        if (!expected.equalsIgnoreCase(keyword.image)) {
+            throw new ParseException("Expected " + expected + " but found " + keyword.image);
+        }
     }
 }
 
