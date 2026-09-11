@@ -569,6 +569,15 @@ public interface ExpressionVisitor<T> {
 
     <S> T visit(RowGetExpression rowGetExpression, S context);
 
+    default <S> T visit(MethodCallExpression methodCall, S context) {
+        methodCall.getExpression().accept(this, context);
+        return methodCall.getMethod().accept(this, context);
+    }
+
+    default void visit(MethodCallExpression methodCall) {
+        this.visit(methodCall, null);
+    }
+
     default void visit(RowGetExpression rowGetExpression) {
         this.visit(rowGetExpression, null);
     }

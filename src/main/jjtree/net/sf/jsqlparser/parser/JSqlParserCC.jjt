@@ -9180,10 +9180,17 @@ Expression NavigationStep(Expression base):
 {
     Expression step = null;
     String nm = null;
+    Function method;
 }
 {
     (
-        "." nm=RelObjectNameExt() { step = new RowGetExpression(base, nm); }
+        "."
+        (
+            LOOKAHEAD({ Dialect.SQLSERVER.name().equals(getAsString(Feature.dialect)) && isFunctionAhead() })
+            method=Function() { step = new MethodCallExpression(base, method); }
+            |
+            nm=RelObjectNameExt() { step = new RowGetExpression(base, nm); }
+        )
         |
         step = ArrayExpression(base)
     )
@@ -9201,7 +9208,6 @@ Expression PrimaryExpression() #PrimaryExpression:
     Token token = null;
     Token sign = null;
     Token adjacentToken = null;
-    String tmp = "";
     ColDataType type = null;
     boolean not = false;
     boolean exclamationMarkNot = false;
@@ -9354,8 +9360,8 @@ Expression PrimaryExpression() #PrimaryExpression:
                 "." "*"
                 { retval = new FunctionAllColumns(unwrapParenthesedFunction(retval)); } ]
 
-            // RowGet Expressions
-            ( LOOKAHEAD(2) "." tmp=RelObjectName() { retval = new RowGetExpression(retval, tmp); } )*
+            // Share field and method navigation with the other primary expressions.
+            ( LOOKAHEAD(".") nxt=NavigationStep(retval) { retval = nxt; } )*
         )
     )
 

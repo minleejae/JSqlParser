@@ -1775,6 +1775,11 @@ public class TablesNamesFinder<Void>
     }
 
     @Override
+    public <S> Void visit(MethodCallExpression methodCall, S context) {
+        return ExpressionVisitor.super.visit(methodCall, context);
+    }
+
+    @Override
     public <S> Void visit(HexValue hexValue, S context) {
         return null;
     }

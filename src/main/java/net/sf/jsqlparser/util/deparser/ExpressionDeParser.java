@@ -64,6 +64,7 @@ import net.sf.jsqlparser.expression.PostgresNamedFunctionParameter;
 import net.sf.jsqlparser.expression.RangeExpression;
 import net.sf.jsqlparser.expression.RowConstructor;
 import net.sf.jsqlparser.expression.RowGetExpression;
+import net.sf.jsqlparser.expression.MethodCallExpression;
 import net.sf.jsqlparser.expression.SignedExpression;
 import net.sf.jsqlparser.expression.StringValue;
 import net.sf.jsqlparser.expression.StructType;
@@ -1469,6 +1470,11 @@ public class ExpressionDeParser extends AbstractDeParser<Expression>
         rowGetExpression.getExpression().accept(this, context);
         builder.append(".").append(rowGetExpression.getColumnName());
         return null;
+    }
+
+    @Override
+    public <S> StringBuilder visit(MethodCallExpression methodCall, S context) {
+        return methodCall.appendTo(builder, expression -> expression.accept(this, context));
     }
 
     @Override

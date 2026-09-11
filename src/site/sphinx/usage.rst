@@ -766,6 +766,13 @@ uses the existing ``Update`` model's ``fromItem`` and ``joins`` properties.
 Table discovery and metadata validation recognize a target alias declared in
 that FROM clause. Other dialects retain the existing FROM-after-SET syntax.
 
+``Dialect.SQLSERVER`` supports methods on expression results, including
+``(SELECT ... FOR XML PATH(''), TYPE).value('.', 'varchar(max)')``.
+``MethodCallExpression`` exposes the receiver expression and a ``Function``
+containing the method name and arguments. Field access and method calls share
+the navigation grammar; expression visitors and deparsers traverse both the
+receiver and method arguments. XQuery strings remain string literals.
+
 With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
 ``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``
 for both ``CREATE TABLE`` and ``ALTER TABLE``. Without that dialect, these words
