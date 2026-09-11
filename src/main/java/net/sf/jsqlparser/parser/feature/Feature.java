@@ -809,10 +809,10 @@ public enum Feature {
     allowDoubleQuotedStrings(false),
 
     /**
-     * Recognizes PostgreSQL $tag$...$tag$ literals. Disable for dialects where these spellings are
-     * unquoted identifiers. Untagged $$ literals are unaffected.
+     * Recognizes PostgreSQL $tag$...$tag$ literals; disabled by default to preserve unquoted
+     * identifiers, enabled by the PostgreSQL dialect preset. Untagged $$ literals are unaffected.
      */
-    allowDollarQuotedStringTags(true),
+    allowDollarQuotedStringTags(false),
 
     /**
      * concatenates adjacent String Literals: NEWLINE when separated by whitespace with at least one

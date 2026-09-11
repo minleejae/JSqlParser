@@ -14,6 +14,7 @@ import net.sf.jsqlparser.expression.Alias;
 import net.sf.jsqlparser.expression.JsonExpression;
 import net.sf.jsqlparser.expression.StringValue;
 import net.sf.jsqlparser.expression.operators.relational.Intersects;
+import net.sf.jsqlparser.parser.AbstractJSqlParser.Dialect;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
@@ -110,7 +111,8 @@ public class PostgresTest {
     @Test
     void testDollarQuotedText() throws JSQLParserException {
         String sqlStr = "SELECT $tag$This\nis\na\nselect\ntest\n$tag$ from dual where a=b";
-        PlainSelect st = (PlainSelect) CCJSqlParserUtil.parse(sqlStr);
+        PlainSelect st = (PlainSelect) CCJSqlParserUtil.parse(sqlStr,
+                parser -> parser.withDialect(Dialect.POSTGRESQL));
 
         StringValue stringValue = st.getSelectItem(0).getExpression(StringValue.class);
 

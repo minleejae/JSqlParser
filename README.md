@@ -149,8 +149,9 @@ array-literal ambiguity. The complete reference is on the
 [syntax page](https://jsqlparser.github.io/JSqlParser/syntax.html).
 
 PostgreSQL dollar-quoted strings, including `$tag$…$tag$`, retain their delimiter and
-literal body in `StringValue`. For dialects that use the same spelling as an unquoted
-identifier, `parser.withDollarQuotedStringTags(false)` retains identifier parsing.
+literal body in `StringValue`. Tagged quotes are disabled by default to preserve
+identifier parsing. Enable them with `parser.withDialect(Dialect.POSTGRESQL)` or
+`parser.withDollarQuotedStringTags(true)`. Untagged `$$…$$` literals remain enabled.
 
 ## Statement classification
 
