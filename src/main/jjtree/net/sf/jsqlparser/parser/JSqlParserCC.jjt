@@ -1769,6 +1769,14 @@ TOKEN_MGR_DECLS : {
         token.endColumn = input_stream.getEndColumn();
     }
 
+    /** Splits a longest-match identifier without losing token positions. */
+    private void truncateIdentifierToken(Token token, int length) {
+        input_stream.backup(token.image.length() - length);
+        token.image = token.image.substring(0, length);
+        token.endLine = input_stream.getEndLine();
+        token.endColumn = input_stream.getEndColumn();
+    }
+
     /**
      * Consumes the body of a block comment after the opening delimiter has been matched,
      * honouring nesting, up to and including the outermost closing delimiter. Then backs
@@ -2510,8 +2518,19 @@ TOKEN:
             && Boolean.TRUE.equals(configuration.getValue(Feature.allowHashLineComments))) {
         int hashIndex = matchedToken.image.indexOf('#');
         if (hashIndex > 0) {
-            input_stream.backup(matchedToken.image.length() - hashIndex);
-            matchedToken.image = matchedToken.image.substring(0, hashIndex);
+            truncateIdentifierToken(matchedToken, hashIndex);
+        }
+    }
+    // PostgreSQL does not allow # in unquoted identifiers. Re-lex it as an
+    // operator, including #> and #>>, even when it touches the left operand.
+    if (matchedToken.kind == S_IDENTIFIER
+            && AbstractJSqlParser.Dialect.POSTGRESQL.name().equals(configuration.getValue(Feature.dialect))) {
+        int hashIndex = matchedToken.image.indexOf('#');
+        if (hashIndex > 0) {
+            truncateIdentifierToken(matchedToken, hashIndex);
+        } else if (hashIndex == 0) {
+            truncateIdentifierToken(matchedToken, 1);
+            matchedToken.kind = S_HASH_OPERATOR;
         }
     }
 }
@@ -2532,8 +2551,7 @@ TOKEN:
             && Boolean.TRUE.equals(configuration.getValue(Feature.allowHashLineComments))) {
         int hashIndex = matchedToken.image.indexOf('#');
         if (hashIndex > 0) {
-            input_stream.backup(matchedToken.image.length() - hashIndex);
-            matchedToken.image = matchedToken.image.substring(0, hashIndex);
+            truncateIdentifierToken(matchedToken, hashIndex);
         }
     }
 }

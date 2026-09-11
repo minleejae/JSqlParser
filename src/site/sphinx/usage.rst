@@ -766,6 +766,11 @@ uses the existing ``Update`` model's ``fromItem`` and ``joins`` properties.
 Table discovery and metadata validation recognize a target alias declared in
 that FROM clause. Other dialects retain the existing FROM-after-SET syntax.
 
+With ``Dialect.POSTGRESQL``, ``#`` terminates an unquoted identifier, so JSON
+operators such as ``js#>>'{a}'`` and ``js#>'{a}'`` work without surrounding
+spaces. Quote identifiers containing ``#``, for example ``"js#"``. Other
+dialects retain their existing identifier and hash-comment rules.
+
 With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
 ``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``
 for both ``CREATE TABLE`` and ``ALTER TABLE``. Without that dialect, these words
