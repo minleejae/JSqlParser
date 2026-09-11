@@ -333,6 +333,9 @@ public class TablesNamesFinder<Void>
         if (withItem.getAlias() != null) {
             otherItemNames.add(withItem.getAlias().getName());
         }
+        if (withItem.getCycleClause() != null) {
+            withItem.getCycleClause().accept(this, context);
+        }
         // dispatch any ParenthesedStatement payload (Select, Delete, Update, Insert)
         withItem.accept((StatementVisitor<?>) this, context);
         return null;

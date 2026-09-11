@@ -9,6 +9,9 @@
  */
 package net.sf.jsqlparser.statement.select;
 
+import java.util.function.Consumer;
+import net.sf.jsqlparser.expression.Expression;
+
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -28,6 +31,7 @@ public class WithItem<K extends ParenthesedStatement> implements Serializable {
     private List<SelectItem<?>> withItemList;
     private WithFunctionDeclaration withFunctionDeclaration;
     private WithSearchClause searchClause;
+    private WithCycleClause cycleClause;
     private boolean recursive = false;
     private boolean usingNot = false;
     private boolean materialized = false;
@@ -149,6 +153,32 @@ public class WithItem<K extends ParenthesedStatement> implements Serializable {
         return this;
     }
 
+    public WithCycleClause getCycleClause() {
+        return cycleClause;
+    }
+
+    public void setCycleClause(WithCycleClause cycleClause) {
+        this.cycleClause = cycleClause;
+    }
+
+    public WithItem<K> withCycleClause(WithCycleClause cycleClause) {
+        setCycleClause(cycleClause);
+        return this;
+    }
+
+    public StringBuilder appendRecursiveClausesTo(StringBuilder builder,
+            Consumer<Expression> expressionPrinter) {
+        if (searchClause != null) {
+            builder.append(" ");
+            searchClause.appendTo(builder, expressionPrinter);
+        }
+        if (cycleClause != null) {
+            builder.append(" ");
+            cycleClause.appendTo(builder, expressionPrinter);
+        }
+        return builder;
+    }
+
     @Override
     public String toString() {
         StringBuilder builder = new StringBuilder();
@@ -174,9 +204,7 @@ public class WithItem<K extends ParenthesedStatement> implements Serializable {
                         : "MATERIALIZED ");
             }
             builder.append(statement);
-            if (searchClause != null) {
-                builder.append(" ").append(searchClause);
-            }
+            appendRecursiveClausesTo(builder, expression -> builder.append(expression));
         }
         return builder.toString();
     }

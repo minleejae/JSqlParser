@@ -9,6 +9,9 @@
  */
 package net.sf.jsqlparser.statement.select;
 
+import java.util.function.Consumer;
+import net.sf.jsqlparser.expression.Expression;
+
 import java.io.Serializable;
 import java.util.Collection;
 
@@ -86,15 +89,23 @@ public class WithSearchClause implements Serializable {
         return this;
     }
 
+    public StringBuilder appendTo(StringBuilder builder,
+            Consumer<Expression> expressionPrinter) {
+        builder.append("SEARCH ").append(searchOrder).append(" FIRST BY ");
+        if (searchColumns != null) {
+            for (int i = 0; i < searchColumns.size(); i++) {
+                if (i > 0) {
+                    builder.append(", ");
+                }
+                expressionPrinter.accept(searchColumns.get(i));
+            }
+        }
+        return builder.append(" SET ").append(sequenceColumnName);
+    }
+
     @Override
     public String toString() {
-        return new StringBuilder()
-                .append("SEARCH ")
-                .append(searchOrder)
-                .append(" FIRST BY ")
-                .append(Select.getStringList(searchColumns))
-                .append(" SET ")
-                .append(sequenceColumnName)
-                .toString();
+        StringBuilder builder = new StringBuilder();
+        return appendTo(builder, expression -> builder.append(expression)).toString();
     }
 }

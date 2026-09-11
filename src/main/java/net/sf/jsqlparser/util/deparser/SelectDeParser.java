@@ -900,9 +900,8 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
             StatementDeParser statementDeParser =
                     new StatementDeParser((ExpressionDeParser) expressionVisitor, this, builder);
             statementDeParser.deParse(withItem.getParenthesedStatement());
-            if (withItem.getSearchClause() != null) {
-                builder.append(" ").append(withItem.getSearchClause());
-            }
+            withItem.appendRecursiveClausesTo(builder,
+                    expression -> expression.accept(expressionVisitor, context));
         } else {
             builder.append(withItem.getWithFunctionDeclaration().toString());
         }
