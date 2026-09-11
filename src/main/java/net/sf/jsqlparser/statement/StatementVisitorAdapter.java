@@ -548,6 +548,13 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
 
     @Override
     public <S> T visit(CreateFunctionalStatement createFunctionalStatement, S context) {
+        if (createFunctionalStatement.getReturnType() != null
+                && createFunctionalStatement.getReturnType().getTableElements() != null) {
+            createFunctionalStatement.getReturnType().getTableElements()
+                    .forEach(element -> TableDefinitionTraversal.visit(element,
+                            expression -> expression.accept(expressionVisitor, context),
+                            table -> table.accept(fromItemVisitor, context)));
+        }
         return null;
     }
 

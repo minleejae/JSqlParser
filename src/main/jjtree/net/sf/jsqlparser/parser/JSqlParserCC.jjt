@@ -2669,6 +2669,13 @@ Statement SingleStatement() :
 }
 {
         (
+           LOOKAHEAD({ Dialect.SQLSERVER.name().equals(getAsString(Feature.dialect))
+               && ((getToken(1).kind == K_ALTER && (getToken(2).kind == K_FUNCTION || getToken(2).kind == K_PROCEDURE))
+                   || (getToken(1).kind == K_CREATE && (getToken(2).kind == K_FUNCTION || getToken(2).kind == K_PROCEDURE
+                       || (getToken(2).kind == K_OR && getToken(3).kind == K_ALTER
+                           && (getToken(4).kind == K_FUNCTION || getToken(4).kind == K_PROCEDURE))))) })
+           stm = SqlServerRoutine()
+           |
            LOOKAHEAD(3) (
                 [ LOOKAHEAD(2) with=WithList() ]
                 (
@@ -16282,6 +16289,99 @@ CreateFunctionalStatement CreateFunctionStatement(boolean isUsingOrReplace):
 
     return type;
   }
+}
+
+CreateFunctionalStatement SqlServerRoutine():
+{
+    CreateFunctionalStatement result;
+    CreateFunctionalStatement.Operation operation = CreateFunctionalStatement.Operation.CREATE;
+    List<String> parts;
+    FunctionReturnType returnType;
+}
+{
+    ( <K_CREATE> [ <K_OR> <K_ALTER> { operation = CreateFunctionalStatement.Operation.CREATE_OR_ALTER; } ]
+      | <K_ALTER> { operation = CreateFunctionalStatement.Operation.ALTER; } )
+    (
+        <K_FUNCTION> parts=captureSqlServerFunctionHeader()
+        returnType=SqlServerFunctionReturnType()
+        { result = new CreateFunction(parts); result.setReturnType(returnType); }
+        parts=captureSqlServerRoutineBody(false) { result.setRoutineBodyParts(parts); }
+        | <K_PROCEDURE> parts=captureSqlServerRoutineBody(true) { result = new CreateProcedure(parts); }
+    )
+    { result.setOperation(operation); return result; }
+}
+
+FunctionReturnType SqlServerFunctionReturnType():
+{
+    FunctionReturnType result = new FunctionReturnType();
+    UserVariable variable; ColDataType dataType;
+    TableElement element; List<TableElement> elements = new ArrayList<TableElement>();
+}
+{
+    <K_RETURNS>
+    (
+        LOOKAHEAD({ getToken(1).kind == K_TABLE || getToken(1).kind == S_AT_IDENTIFIER })
+        [ variable=UserVariable() { result.setTableVariable(variable.toString()); } ]
+        <K_TABLE> { result.setTable(true); }
+        [ "(" element=SqlServerReturnTableElement() { elements.add(element); }
+          ( "," element=SqlServerReturnTableElement() { elements.add(element); } )* ")"
+          { result.setTableElements(elements); } ]
+        { requireDdlSyntax(result.getTableVariable() == null || result.getTableElements() != null,
+              "A return table variable requires column definitions"); }
+        | dataType=ColDataType() { result.setDataType(dataType); }
+    )
+    { return result; }
+}
+
+TableElement SqlServerReturnTableElement():
+{ TableElement element; }
+{
+    ( LOOKAHEAD(3) element=CreateTableConstraint() | element=ColumnDefinition() )
+    { return element; }
+}
+
+JAVACODE
+List<String> captureSqlServerFunctionHeader() {
+    List<String> parts = new ArrayList<String>();
+    int depth = 0;
+    while (true) {
+        Token next = getToken(1);
+        if (next.kind == K_RETURNS && depth == 0) break;
+        if (next.kind == EOF || next.kind == ST_SEMICOLON) {
+            throw new ParseException("A SQL Server function requires RETURNS");
+        }
+        if ("(".equals(next.image)) depth++;
+        if (")".equals(next.image)) depth--;
+        if (depth < 0) throw new ParseException("Unbalanced function parameters");
+        parts.add(getNextToken().image);
+    }
+    if (parts.size() < 3 || "(".equals(parts.get(0)) || !")".equals(parts.get(parts.size() - 1))) {
+        throw new ParseException("A SQL Server function requires a name and parameter parentheses");
+    }
+    return parts;
+}
+
+JAVACODE
+List<String> captureSqlServerRoutineBody(boolean procedure) {
+    List<String> parts = new ArrayList<String>();
+    int depth = 0;
+    while (true) {
+        Token next = getToken(1);
+        // Procedure definitions occupy the rest of their batch, including statements
+        // after an END. Their opaque bodies may contain BEGIN TRANSACTION and TRY/CATCH.
+        if (next.kind == EOF || (!procedure && next.kind == ST_SEMICOLON && depth == 0)) break;
+        if (!procedure) {
+            if (next.kind == K_BEGIN || next.kind == K_CASE) {
+                depth++;
+            } else if (next.kind == K_END) {
+                if (--depth < 0) throw new ParseException("Unmatched END in routine");
+            }
+        }
+        parts.add(getNextToken().image);
+    }
+    if (depth != 0) throw new ParseException("Unterminated SQL Server routine block");
+    if (parts.isEmpty()) throw new ParseException("A routine body is required");
+    return parts;
 }
 
 CreateSynonym CreateSynonym(boolean isUsingOrReplace):

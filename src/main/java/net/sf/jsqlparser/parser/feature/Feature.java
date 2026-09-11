@@ -660,6 +660,8 @@ public enum Feature {
      * @see CreateFunctionalStatement
      */
     functionalStatement,
+
+    alterFunction, alterProcedure, createOrAlterRoutine,
     /**
      * SQL block starting with "BEGIN" and ends with "END" statement is allowed
      *

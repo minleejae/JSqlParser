@@ -872,3 +872,23 @@ References: `CREATE ROLE <https://www.postgresql.org/docs/18/sql-createrole.html
 `REVOKE <https://www.postgresql.org/docs/18/sql-revoke.html>`_,
 `ALTER DEFAULT PRIVILEGES <https://www.postgresql.org/docs/18/sql-alterdefaultprivileges.html>`_,
 `CREATE TRIGGER <https://www.postgresql.org/docs/18/sql-createtrigger.html>`_.
+
+SQL Server routine declarations
+-------------------------------
+
+``Dialect.SQLSERVER`` uses a shared declaration path for ``CREATE``, ``ALTER`` and
+``CREATE OR ALTER FUNCTION/PROCEDURE``. ``CreateFunctionalStatement.getOperation()``
+identifies the operation. For functions, ``getReturnType()`` exposes scalar types,
+inline ``RETURNS TABLE``, and a return variable with ordered ``TableElement`` column
+and constraint definitions. Table elements reuse the existing definition traversal
+and deparser, including custom expression visitors.
+
+With a structured return type, ``getFunctionDeclarationParts()`` contains the name
+and parameter tokens; ``getRoutineBodyParts()`` contains the following options and
+body. These remain opaque tokens, so this does not implement a T-SQL body AST or
+resolve tables used inside a routine. Other dialects retain the existing token-list
+representation. New operations have separate validation capabilities.
+
+Parse procedure definitions one SQL Server batch at a time: a procedure consumes the
+remaining batch, including SQL after an ``END``. Client-side ``GO`` batch splitting is
+not performed by this routine declaration parser.
