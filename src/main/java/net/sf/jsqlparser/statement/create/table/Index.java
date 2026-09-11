@@ -27,6 +27,10 @@ public class Index implements TableElement, Serializable {
         PRIMARY_KEY, UNIQUE, INDEX, FULLTEXT, SPATIAL, FOREIGN_KEY, CHECK, EXCLUDE, DEFAULT, OTHER
     }
 
+    public enum Clustering {
+        CLUSTERED, NONCLUSTERED
+    }
+
     private final List<String> name = new ArrayList<>();
     private String type;
     private String using;
@@ -35,11 +39,30 @@ public class Index implements TableElement, Serializable {
     private String commentText;
     private String indexKeyword;
     private Kind kind = Kind.OTHER;
+    private Clustering clustering;
     private Boolean nullsDistinct;
     private List<String> includeColumns;
     private List<Option> storageParameters;
     private String tableSpace;
     private ConstraintAttributes constraintAttributes;
+
+    /** Returns the explicit SQL Server clustering option, or null when it was omitted. */
+    public Clustering getClustering() {
+        return clustering;
+    }
+
+    public void setClustering(Clustering clustering) {
+        this.clustering = clustering;
+    }
+
+    public Index withClustering(Clustering clustering) {
+        setClustering(clustering);
+        return this;
+    }
+
+    public String clusteringClause() {
+        return clustering == null ? "" : " " + clustering;
+    }
 
     public Boolean getNullsDistinct() {
         return nullsDistinct;
@@ -277,7 +300,8 @@ public class Index implements TableElement, Serializable {
                 : "")
                 + (!idxSpecText.isEmpty() ? " " + idxSpecText : "");
 
-        StringBuilder sql = new StringBuilder(head).append(nullsDistinctClause());
+        StringBuilder sql = new StringBuilder(head).append(nullsDistinctClause())
+                .append(clusteringClause());
         if (!tail.isEmpty()) {
             sql.append(' ').append(tail);
         }

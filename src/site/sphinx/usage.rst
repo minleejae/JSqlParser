@@ -702,7 +702,7 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
     * - ``MYSQL``
       - ``withBackslashEscapeCharacter``, ``withHashLineComments``, ``withDoubleQuotedStrings`` (MySQL and MariaDB, the last for the default ``sql_mode``)
     * - ``SQLSERVER``
-      - ``withSquareBracketQuotation``
+      - ``withSquareBracketQuotation`` and ``CLUSTERED`` / ``NONCLUSTERED`` options on table-level primary key and unique constraints
     * - ``POSTGRESQL``, ``ANSI_SQL``
       - the newline rule for adjacent string literals
     * - ``BIGQUERY``
@@ -722,6 +722,11 @@ Doris distribution hints require ``parser.withDialect(Dialect.DORIS)``.
 ``Join.getJoinHint()`` exposes the keyword and ``Position.AFTER_JOIN``;
 the existing SQL Server hints use ``Position.BEFORE_JOIN``. Rendering preserves
 both the position and the brackets around a Doris hint.
+
+With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
+``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``
+for both ``CREATE TABLE`` and ``ALTER TABLE``. Without that dialect, these words
+retain their existing interpretation as optional index names.
 
 Informix's constraint form requires an explicit dialect selection:
 

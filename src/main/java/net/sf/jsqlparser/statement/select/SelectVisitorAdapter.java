@@ -297,6 +297,9 @@ public class SelectVisitorAdapter<T> implements SelectVisitor<T> {
      */
     @Override
     public <S> T visit(WithItem<?> withItem, S context) {
+        if (withItem.getCycleClause() != null) {
+            withItem.getCycleClause().accept(expressionVisitor, context);
+        }
         ParenthesedStatement body = withItem.getParenthesedStatement();
 
         // ParenthesedSelect is a Select and stays on the select path
