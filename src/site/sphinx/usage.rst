@@ -702,7 +702,7 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
     * - ``MYSQL``
       - ``withBackslashEscapeCharacter``, ``withHashLineComments``, ``withDoubleQuotedStrings`` (MySQL and MariaDB, the last for the default ``sql_mode``)
     * - ``SQLSERVER``
-      - ``withSquareBracketQuotation`` and ``CLUSTERED`` / ``NONCLUSTERED`` options on table-level primary key and unique constraints
+      - ``withSquareBracketQuotation`` and ``CLUSTERED`` / ``NONCLUSTERED`` options on table-level primary key and unique constraints and ``CREATE INDEX``
     * - ``POSTGRESQL``, ``ANSI_SQL``
       - the newline rule for adjacent string literals
     * - ``BIGQUERY``
@@ -713,6 +713,8 @@ One grammar covers every supported RDBMS, but a few pieces of syntax mean differ
       - ``withBackslashEscapeCharacter`` only, double quotes stay quoted identifiers
     * - ``INFORMIX``
       - Informix ``ALTER TABLE ... ADD CONSTRAINT`` definitions with optional trailing constraint names
+    * - ``SPANNER``
+      - GoogleSQL ``CREATE [UNIQUE] NULL_FILTERED INDEX`` with a separate null-filtering flag
 
 Features set explicitly *after* the preset win over it.
 
@@ -720,6 +722,29 @@ With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
 ``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``
 for both ``CREATE TABLE`` and ``ALTER TABLE``. Without that dialect, these words
 retain their existing interpretation as optional index names.
+
+``CREATE UNIQUE NONCLUSTERED INDEX ix ON t (id)`` also requires
+``Dialect.SQLSERVER``. Uniqueness remains in ``Index.getType()`` and clustering
+is stored separately in ``Index.getClustering()``. With ``Dialect.SPANNER``,
+``CREATE UNIQUE NULL_FILTERED INDEX ix ON t (id)`` stores null filtering in
+``CreateIndex.isNullFiltered()``. An omitted clustering or null-filtering option
+is not supplied from database defaults. The Spanner preset currently selects
+this index syntax; it does not configure GoogleSQL string-literal rules.
+
+With ``Dialect.POSTGRESQL``, index keys accept schema-qualified collation and
+operator-class names, for example ``name COLLATE pg_catalog."C"
+pg_catalog.text_ops ASC NULLS LAST``. Function keys such as ``lower(name)`` are
+stored as expressions. Key attributes are available through ``getCollation()``,
+``getOperatorClass()``, ``getOperatorClassParameters()``, ``getSortOrder()`` and
+``getNullOrdering()`` on ``Index.ColumnParams``. Under this dialect these
+attributes are not duplicated in the legacy ``getParams()`` list, so changing
+or removing them is reflected when rendering SQL. Other dialects retain the
+legacy parameter representation, including MySQL prefix lengths.
+
+``CreateIndexDeParser`` and ``StatementDeParser`` pass key expressions,
+structured option values and the partial-index predicate to their expression
+visitor. ``StatementVisitorAdapter``, ``TablesNamesFinder`` and index validation
+traverse the same structured expressions.
 
 Informix's constraint form requires an explicit dialect selection:
 

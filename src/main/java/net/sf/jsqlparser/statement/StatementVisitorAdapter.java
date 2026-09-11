@@ -334,7 +334,9 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
 
     @Override
     public <S> T visit(CreateIndex createIndex, S context) {
-
+        TableDefinitionTraversal.visit(createIndex,
+                expression -> expression.accept(expressionVisitor, context),
+                table -> table.accept(fromItemVisitor, context));
         return null;
     }
 

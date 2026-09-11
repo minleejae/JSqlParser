@@ -11760,37 +11760,50 @@ Index.ColumnParams IndexColumnWithParams(): {
     List<String> parameter = null;
     Expression expression = null;
     String collation = null;
-    Token operatorClass = null;
+    String operatorClass = null;
     List<Index.Option> operatorClassParameters = null;
     Token sortOrder = null;
     Token nullOrdering = null;
     Index.ColumnParams column = null;
+    boolean postgres = Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect));
+    boolean expressionParenthesized = true;
 }
 {
     (
+        LOOKAHEAD({ Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect)) && isFunctionAhead() }) expression=Function()
+        { expressionParenthesized = false; }
+        |
         columnName=RelObjectName()
         |
         "(" expression=Expression() ")"
     )
     // MySQL prefix lengths precede all PostgreSQL key attributes.
-    [ LOOKAHEAD("(") parameter=CreateParameter() { columnParams.addAll(parameter); } ]
-    [ LOOKAHEAD(2) <K_COLLATE> collation=RelObjectName()
-        { columnParams.add("COLLATE"); columnParams.add(collation); } ]
-    [ LOOKAHEAD(2) (operatorClass=<S_IDENTIFIER> | operatorClass=<S_QUOTED_IDENTIFIER>)
+    [ LOOKAHEAD("(", { !Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect)) }) parameter=CreateParameter() { columnParams.addAll(parameter); } ]
+    [ LOOKAHEAD(2) <K_COLLATE> collation=IndexKeyAttributeName()
+        { if (!postgres) { columnParams.add("COLLATE"); columnParams.add(collation); } } ]
+    [ LOOKAHEAD(2, IndexKeyAttributeName(), {
+            getToken(1).kind == S_IDENTIFIER || getToken(1).kind == S_QUOTED_IDENTIFIER
+            || (Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect))
+                && getToken(1).kind != K_ASC && getToken(1).kind != K_DESC
+                && getToken(1).kind != K_NULLS && getToken(1).kind != K_COLLATE
+                && getToken(1).kind != K_WITH) })
+        operatorClass=IndexKeyAttributeName()
         [ LOOKAHEAD(2) operatorClassParameters=PostgreSqlIndexOptions() ]
         {
-            columnParams.add(operatorClass.image);
-            if (operatorClassParameters != null) {
-                columnParams.add(PlainSelect.getStringList(
-                        operatorClassParameters, true, true));
+            if (!postgres) {
+                columnParams.add(operatorClass);
+                if (operatorClassParameters != null) {
+                    columnParams.add(PlainSelect.getStringList(
+                            operatorClassParameters, true, true));
+                }
             }
         }
     ]
     [ LOOKAHEAD(2) (sortOrder=<K_ASC> | sortOrder=<K_DESC>)
-        { columnParams.add(sortOrder.image); } ]
+        { if (!postgres) { columnParams.add(sortOrder.image); } } ]
     [ LOOKAHEAD(2) <K_NULLS> (nullOrdering=<K_FIRST> | nullOrdering=<K_LAST>)
-        { columnParams.add("NULLS"); columnParams.add(nullOrdering.image); } ]
-    ( LOOKAHEAD(2, { getToken(1).kind != K_WITH }) parameter=CreateParameter() { columnParams.addAll(parameter); } )*
+        { if (!postgres) { columnParams.add("NULLS"); columnParams.add(nullOrdering.image); } } ]
+    ( LOOKAHEAD(2, { !Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect)) && getToken(1).kind != K_WITH }) parameter=CreateParameter() { columnParams.addAll(parameter); } )*
     {
         column = expression != null
                 ? new Index.ColumnParams(expression,
@@ -11798,8 +11811,9 @@ Index.ColumnParams IndexColumnWithParams(): {
                 : new Index.ColumnParams(columnName,
                         columnParams.isEmpty() ? null : columnParams);
         column.setCollation(collation);
+        column.setExpressionParenthesized(expressionParenthesized);
         if (operatorClass != null) {
-            column.setOperatorClass(operatorClass.image);
+            column.setOperatorClass(operatorClass);
             column.setOperatorClassParameters(operatorClassParameters);
         }
         if (sortOrder != null) {
@@ -11812,6 +11826,20 @@ Index.ColumnParams IndexColumnWithParams(): {
         }
         return column;
     }
+}
+
+/** Keeps qualified PostgreSQL collation and operator-class names out of expression parsing. */
+String IndexKeyAttributeName():
+{
+    String name;
+    String part;
+}
+{
+    name=RelObjectName()
+    ( LOOKAHEAD(".", { Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect)) })
+        "." part=RelObjectNameExt() { name += "." + part; }
+    )*
+    { return name; }
 }
 
 Index.Option PostgreSqlIndexOption():
@@ -11867,6 +11895,33 @@ Index Index(): {
     name= RelObjectNames() { return new Index().withName(name.getNames()).withType(""); }
 }
 
+/** Parses dialect-specific index modifiers while retaining the legacy single type token. */
+Index CreateIndexModifiers(CreateIndex statement):
+{
+    Index index = new Index();
+    Token token;
+    List<String> parameter;
+    Index.Clustering clustering;
+}
+{
+    (
+        LOOKAHEAD({ Dialect.SQLSERVER.name().equals(getAsString(Feature.dialect))
+                && (getToken(1).kind == K_UNIQUE || isKeywordAhead("CLUSTERED")
+                    || isKeywordAhead("NONCLUSTERED")) })
+        [ token=<K_UNIQUE> { index.setType(token.image); } ]
+        clustering=SqlServerIndexClustering() { index.setClustering(clustering); }
+        |
+        LOOKAHEAD({ Dialect.SPANNER.name().equals(getAsString(Feature.dialect))
+                && (getToken(1).kind == K_UNIQUE || isKeywordAhead("NULL_FILTERED")) })
+        [ token=<K_UNIQUE> { index.setType(token.image); } ]
+        [ LOOKAHEAD({ isKeywordAhead("NULL_FILTERED") }) token=<S_IDENTIFIER>
+            { statement.setNullFiltered(true); } ]
+        |
+        [ parameter=CreateParameter() { index.setType(parameter.get(0)); } ]
+    )
+    { return index; }
+}
+
 CreateIndex CreateIndex():
 {
     CreateIndex createIndex = new CreateIndex();
@@ -11878,26 +11933,20 @@ CreateIndex CreateIndex():
     String tableSpace = null;
     Expression where = null;
     String indexType;
-    Index index = null;
+    Index index;
     List<String> parameter = new ArrayList<String>();
     List<String> tailParameters = new ArrayList<String>();
-    List<String> name;
+    ObjectNames name;
 }
 {
-    [ parameter=CreateParameter() ]
+    index=CreateIndexModifiers(createIndex)
 
     <K_INDEX>
     [ LOOKAHEAD({ getToken(1).kind == K_CONCURRENTLY })
         <K_CONCURRENTLY> { createIndex.setConcurrently(true); } ]
     [ LOOKAHEAD(2) <K_IF> <K_NOT> <K_EXISTS> { createIndex.setUsingIfNotExists(true);} ]
     [ LOOKAHEAD({ getToken(1).kind != K_ON && getToken(1).kind != K_USING })
-        index = Index() ]
-    {
-        if (index == null) {
-            index = new Index();
-        }
-        index.setType(parameter.isEmpty() ? null : parameter.get(0));
-    }
+        name=RelObjectNames() { index.setName(name.getNames()); } ]
     (
         LOOKAHEAD(3)(
             <K_ON> [ <K_ONLY> { createIndex.setOnly(true); } ] table=Table()

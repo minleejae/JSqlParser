@@ -141,7 +141,8 @@ public class StatementDeParser extends AbstractDeParser<Statement>
 
     @Override
     public <S> StringBuilder visit(CreateIndex createIndex, S context) {
-        CreateIndexDeParser createIndexDeParser = new CreateIndexDeParser(builder);
+        CreateIndexDeParser createIndexDeParser =
+                new CreateIndexDeParser(builder, expressionDeParser);
         createIndexDeParser.deParse(createIndex);
         return builder;
     }

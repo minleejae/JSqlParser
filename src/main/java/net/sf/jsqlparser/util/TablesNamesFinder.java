@@ -1552,7 +1552,9 @@ public class TablesNamesFinder<Void>
 
     @Override
     public <S> Void visit(CreateIndex createIndex, S context) {
-        throwUnsupported(createIndex);
+        TableDefinitionTraversal.visit(createIndex,
+                expression -> expression.accept(this, context),
+                table -> visit(table, context));
         return null;
     }
 

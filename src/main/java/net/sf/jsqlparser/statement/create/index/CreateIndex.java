@@ -9,14 +9,12 @@
  */
 package net.sf.jsqlparser.statement.create.index;
 
-import static java.util.stream.Collectors.joining;
-
 import java.util.*;
+import java.util.function.Consumer;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.schema.*;
 import net.sf.jsqlparser.statement.*;
 import net.sf.jsqlparser.statement.create.table.*;
-import net.sf.jsqlparser.statement.select.PlainSelect;
 
 public class CreateIndex implements Statement {
 
@@ -27,6 +25,7 @@ public class CreateIndex implements Statement {
     private boolean usingIfNotExists = false;
     private boolean concurrently;
     private boolean only;
+    private boolean nullFiltered;
     private List<String> includeColumns;
     private Boolean nullsDistinct;
     private List<Index.Option> storageParameters;
@@ -64,6 +63,20 @@ public class CreateIndex implements Statement {
 
     public void setOnly(boolean only) {
         this.only = only;
+    }
+
+    /** Whether this Spanner index omits rows with null key values. */
+    public boolean isNullFiltered() {
+        return nullFiltered;
+    }
+
+    public void setNullFiltered(boolean nullFiltered) {
+        this.nullFiltered = nullFiltered;
+    }
+
+    public CreateIndex withNullFiltered(boolean nullFiltered) {
+        setNullFiltered(nullFiltered);
+        return this;
     }
 
     public List<String> getIncludeColumns() {
@@ -142,10 +155,15 @@ public class CreateIndex implements Statement {
 
     /** Shared rendering for the statement model and CreateIndexDeParser. */
     public StringBuilder appendTo(StringBuilder buffer) {
+        return appendTo(buffer, expression -> buffer.append(expression));
+    }
+
+    /** Shares rendering while allowing visitors to transform key and option expressions. */
+    public StringBuilder appendTo(StringBuilder buffer, Consumer<Expression> expressionPrinter) {
         appendIndexHeader(buffer);
         appendIndexTarget(buffer);
-        appendIndexColumns(buffer);
-        appendPostgreSqlTail(buffer);
+        appendIndexColumns(buffer, expressionPrinter);
+        appendPostgreSqlTail(buffer, expressionPrinter);
         if (tailParameters != null) {
             for (String param : tailParameters) {
                 buffer.append(" ").append(param);
@@ -158,6 +176,12 @@ public class CreateIndex implements Statement {
         buffer.append("CREATE ");
         if (index.getType() != null) {
             buffer.append(index.getType()).append(" ");
+        }
+        if (index.getClustering() != null) {
+            buffer.append(index.getClustering()).append(" ");
+        }
+        if (nullFiltered) {
+            buffer.append("NULL_FILTERED ");
         }
         buffer.append("INDEX ");
         if (concurrently) {
@@ -185,17 +209,22 @@ public class CreateIndex implements Statement {
         }
     }
 
-    private void appendIndexColumns(StringBuilder buffer) {
-        if (index.getColumnsNames() != null) {
+    private void appendIndexColumns(StringBuilder buffer, Consumer<Expression> expressionPrinter) {
+        if (index.getColumns() != null) {
             buffer.append(" (");
-            buffer.append(index.getColumns().stream()
-                    .map(Index.ColumnParams::toString)
-                    .collect(joining(", ")));
+            for (Iterator<Index.ColumnParams> columns = index.getColumns().iterator(); columns
+                    .hasNext();) {
+                columns.next().appendTo(buffer, expressionPrinter);
+                if (columns.hasNext()) {
+                    buffer.append(", ");
+                }
+            }
             buffer.append(")");
         }
     }
 
-    private void appendPostgreSqlTail(StringBuilder buffer) {
+    private void appendPostgreSqlTail(StringBuilder buffer,
+            Consumer<Expression> expressionPrinter) {
         if (includeColumns != null) {
             buffer.append(" INCLUDE (").append(String.join(", ", includeColumns)).append(")");
         }
@@ -203,14 +232,15 @@ public class CreateIndex implements Statement {
             buffer.append(" NULLS ").append(nullsDistinct ? "DISTINCT" : "NOT DISTINCT");
         }
         if (storageParameters != null) {
-            buffer.append(" WITH ")
-                    .append(PlainSelect.getStringList(storageParameters, true, true));
+            buffer.append(" WITH ");
+            Index.Option.appendListTo(buffer, storageParameters, expressionPrinter);
         }
         if (tableSpace != null) {
             buffer.append(" TABLESPACE ").append(tableSpace);
         }
         if (where != null) {
-            buffer.append(" WHERE ").append(where);
+            buffer.append(" WHERE ");
+            expressionPrinter.accept(where);
         }
     }
 
