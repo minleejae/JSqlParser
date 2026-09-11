@@ -37,7 +37,8 @@ public abstract class AbstractJSqlParser<P> {
                         Feature.allowHashLineComments,
                         Feature.allowDoubleQuotedStrings), SQLSERVER(AdjacentStringLiterals.OFF,
                                 Feature.allowSquareBracketQuotation), POSTGRESQL(
-                                        AdjacentStringLiterals.NEWLINE), H2, EXASOL, BIGQUERY(
+                                        AdjacentStringLiterals.NEWLINE,
+                                        Feature.allowDollarQuotedStringTags), H2, EXASOL, BIGQUERY(
                                                 AdjacentStringLiterals.WHITESPACE,
                                                 Feature.allowDoubleQuotedStrings,
                                                 Feature.allowHashLineComments,
@@ -45,7 +46,7 @@ public abstract class AbstractJSqlParser<P> {
                                                         AdjacentStringLiterals.WHITESPACE,
                                                         Feature.allowDoubleQuotedStrings,
                                                         Feature.allowBackslashEscapeCharacter), SNOWFLAKE(
-                                                                Feature.allowBackslashEscapeCharacter);
+                                                                Feature.allowBackslashEscapeCharacter), INFORMIX;
 
         private final Set<Feature> lexerFeatures;
         private final AdjacentStringLiterals adjacentStringLiterals;
@@ -141,6 +142,14 @@ public abstract class AbstractJSqlParser<P> {
 
     public P withBackslashEscapeCharacter(boolean allowBackslashEscapeCharacter) {
         return withFeature(Feature.allowBackslashEscapeCharacter, allowBackslashEscapeCharacter);
+    }
+
+    /**
+     * Controls tagged dollar quotes; disabled by default, enabled by the PostgreSQL dialect preset.
+     * False preserves dollar-containing identifier spellings.
+     */
+    public P withDollarQuotedStringTags(boolean allowDollarQuotedStringTags) {
+        return withFeature(Feature.allowDollarQuotedStringTags, allowDollarQuotedStringTags);
     }
 
     public P withDoubleQuotedStrings() {

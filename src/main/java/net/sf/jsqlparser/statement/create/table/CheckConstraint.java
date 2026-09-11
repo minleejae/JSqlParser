@@ -54,17 +54,12 @@ public class CheckConstraint extends NamedConstraint {
     @Override
     public String toString() {
         StringBuilder b = new StringBuilder();
-        if (isUseConstraintKeyword() || getName() != null) {
-            b.append("CONSTRAINT");
-            if (getName() != null) {
-                b.append(" ").append(getName());
-            }
-            b.append(" ");
-        }
+        appendConstraintPrefixTo(b);
         b.append("CHECK (").append(expression).append(")");
         if (enforced != null) {
             b.append(enforced ? " ENFORCED" : " NOT ENFORCED");
         }
+        appendConstraintSuffixTo(b);
         appendConstraintAttributesTo(b);
         return b.toString();
     }

@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.MultiPartName;
@@ -86,6 +87,10 @@ public class ReturningClause extends ArrayList<SelectItem<?>> {
     }
 
     public StringBuilder appendTo(StringBuilder builder) {
+        return appendTo(builder, item -> builder.append(item));
+    }
+
+    public StringBuilder appendTo(StringBuilder builder, Consumer<SelectItem<?>> itemPrinter) {
         builder.append(" ").append(keyword).append(" ");
         if (outputAliases != null && !outputAliases.isEmpty()) {
             builder.append("WITH (");
@@ -101,7 +106,7 @@ public class ReturningClause extends ArrayList<SelectItem<?>> {
             if (i > 0) {
                 builder.append(", ");
             }
-            builder.append(get(i));
+            itemPrinter.accept(get(i));
         }
 
         if (dataItems != null && !dataItems.isEmpty()) {

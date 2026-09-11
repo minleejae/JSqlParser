@@ -842,7 +842,9 @@ public class ExpressionDeParser extends AbstractDeParser<Expression>
                 tableName = table.getFullyQualifiedName();
             }
         }
-        if (tableName != null && !tableName.isEmpty()) {
+        if (tableColumn.getReturningQualifier() != null) {
+            builder.append(tableColumn.getReturningQualifier()).append(".");
+        } else if (tableName != null && !tableName.isEmpty()) {
             builder.append(tableName).append(tableColumn.getTableDelimiter());
         }
 
@@ -1417,6 +1419,12 @@ public class ExpressionDeParser extends AbstractDeParser<Expression>
     public <S> StringBuilder visit(UserVariable var, S context) {
         builder.append(var.toString());
         return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(
+            net.sf.jsqlparser.statement.execute.ExecuteArgument argument, S context) {
+        return argument.appendTo(builder, expression -> expression.accept(this, context));
     }
 
     @Override

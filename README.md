@@ -138,15 +138,22 @@ and missing syntax gets added on demand — [open an issue](https://github.com/J
 |  | Statements |
 |---|---|
 | **Queries** | `SELECT` · `WITH …` · Piped SQL |
+| **ksqlDB windows** | JOIN `WITHIN`, window `GRACE PERIOD`, and `EMIT CHANGES`/`FINAL` |
 | **DML** | `INSERT` · `UPDATE` · `UPSERT` · `MERGE` · `DELETE` · `TRUNCATE TABLE` |
 | **DDL** | `CREATE …` · `ALTER …` · `DROP …` |
 | **PostgreSQL RLS** | `CREATE POLICY` · `ALTER TABLE … ENABLE`/`DISABLE`/`FORCE`/`NO FORCE ROW LEVEL SECURITY` |
+| **Informix constraints** | `ALTER TABLE … ADD CONSTRAINT` with trailing constraint names for primary, unique, foreign and check constraints; enable with `parser.withDialect(Dialect.INFORMIX)` |
 | **Salesforce SOQL** | `INCLUDES` · `EXCLUDES` |
 
 Beyond statement shapes, the grammar handles nested sub-selects, bind parameters (`?`,
 `:name`), window and analytic functions, Oracle hints, and the T-SQL square-bracket versus
 array-literal ambiguity. The complete reference is on the
 [syntax page](https://jsqlparser.github.io/JSqlParser/syntax.html).
+
+PostgreSQL dollar-quoted strings, including `$tag$…$tag$`, retain their delimiter and
+literal body in `StringValue`. Tagged quotes are disabled by default to preserve
+identifier parsing. Enable them with `parser.withDialect(Dialect.POSTGRESQL)` or
+`parser.withDollarQuotedStringTags(true)`. Untagged `$$…$$` literals remain enabled.
 
 ## Statement classification
 

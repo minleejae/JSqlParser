@@ -9,6 +9,10 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
+import net.sf.jsqlparser.statement.role.CreateRole;
+import net.sf.jsqlparser.statement.role.AlterRole;
+import net.sf.jsqlparser.statement.grant.Revoke;
+import net.sf.jsqlparser.statement.grant.AlterDefaultPrivileges;
 import net.sf.jsqlparser.statement.create.type.CreateType;
 import net.sf.jsqlparser.statement.alter.AlterType;
 import net.sf.jsqlparser.statement.create.domain.CreateDomain;
@@ -151,7 +155,7 @@ public class StatementDeParser extends AbstractDeParser<Statement>
 
     @Override
     public <S> StringBuilder visit(CreateTrigger createTrigger, S context) {
-        builder.append(createTrigger);
+        createTrigger.appendTo(builder, e -> e.accept(expressionDeParser, context));
         return builder;
     }
 
@@ -445,8 +449,7 @@ public class StatementDeParser extends AbstractDeParser<Statement>
 
     @Override
     public <S> StringBuilder visit(Grant grant, S context) {
-        GrantDeParser grantDeParser = new GrantDeParser(builder);
-        grantDeParser.deParse(grant);
+        grant.appendTo(builder, e -> e.accept(expressionDeParser, context));
         return builder;
     }
 
@@ -568,6 +571,30 @@ public class StatementDeParser extends AbstractDeParser<Statement>
     @Override
     public <S> StringBuilder visit(CreatePolicy createPolicy, S context) {
         new CreatePolicyDeParser(expressionDeParser, builder).deParse(createPolicy);
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(CreateRole statement, S context) {
+        statement.appendTo(builder, e -> e.accept(expressionDeParser, context));
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(AlterRole statement, S context) {
+        statement.appendTo(builder, e -> e.accept(expressionDeParser, context));
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(Revoke statement, S context) {
+        statement.appendTo(builder, e -> e.accept(expressionDeParser, context));
+        return builder;
+    }
+
+    @Override
+    public <S> StringBuilder visit(AlterDefaultPrivileges statement, S context) {
+        statement.appendTo(builder, e -> e.accept(expressionDeParser, context));
         return builder;
     }
 

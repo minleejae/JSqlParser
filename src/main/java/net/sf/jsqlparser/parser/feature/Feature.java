@@ -643,7 +643,7 @@ public enum Feature {
     /**
      * @see Grant
      */
-    grant,
+    grant, revoke, createRole, alterRole, alterDefaultPrivileges,
     /**
      * @see Function
      */
@@ -670,6 +670,9 @@ public enum Feature {
      * @see DeclareStatement
      */
     declare,
+
+    /** SQL Server local table variables in queries and DML targets. */
+    tableVariable,
     /**
      * @see SetStatement
      */
@@ -807,6 +810,12 @@ public enum Feature {
      * disabled by default, where double quotes stay quoted identifiers (ANSI SQL)
      */
     allowDoubleQuotedStrings(false),
+
+    /**
+     * Recognizes PostgreSQL $tag$...$tag$ literals; disabled by default to preserve unquoted
+     * identifiers, enabled by the PostgreSQL dialect preset. Untagged $$ literals are unaffected.
+     */
+    allowDollarQuotedStringTags(false),
 
     /**
      * concatenates adjacent String Literals: NEWLINE when separated by whitespace with at least one

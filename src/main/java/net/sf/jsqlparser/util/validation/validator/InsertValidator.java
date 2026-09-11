@@ -94,6 +94,10 @@ public class InsertValidator extends AbstractValidator<Insert> {
             }
         }
 
+        if (insert.getConflictTarget() != null) {
+            insert.getConflictTarget().accept(getValidator(ExpressionValidator.class), null);
+        }
+
         if (insert.getReturningClause() != null) {
             SelectValidator v = getValidator(SelectValidator.class);
             insert.getReturningClause().forEach(c -> c.accept(v, null));

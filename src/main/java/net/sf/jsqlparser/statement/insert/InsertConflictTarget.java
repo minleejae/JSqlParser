@@ -10,6 +10,9 @@
 package net.sf.jsqlparser.statement.insert;
 
 import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.ExpressionVisitor;
+import net.sf.jsqlparser.statement.create.table.Index;
+import java.util.function.Consumer;
 
 import java.io.Serializable;
 import java.util.*;
@@ -23,75 +26,145 @@ import java.util.*;
  *     ( { index_column_name | ( index_expression ) } [ COLLATE collation ] [ opclass ] [, ...] ) [ WHERE index_predicate ]
  *     ON CONSTRAINT constraint_name
  * </pre>
- * <p>
- * Currently, COLLATE is not supported yet.
  */
 public class InsertConflictTarget implements Serializable {
+    private final List<Index.ColumnParams> indexElements = new ArrayList<>();
+    private Expression whereExpression;
+    private String constraintName;
 
-    ArrayList<String> indexColumnNames = new ArrayList<>();
-    Expression indexExpression;
-    Expression whereExpression;
-    String constraintName;
+    public InsertConflictTarget() {}
 
     public InsertConflictTarget(String indexColumnName, Expression indexExpression,
             Expression whereExpression, String constraintName) {
-        this.indexColumnNames.add(indexColumnName);
-        this.indexExpression = indexExpression;
-
-        this.whereExpression = whereExpression;
-        this.constraintName = constraintName;
+        this(indexColumnName == null ? Collections.emptyList()
+                : Collections.singletonList(indexColumnName),
+                indexExpression, whereExpression, constraintName);
     }
 
-    public InsertConflictTarget(Collection<String> indexColumnName, Expression indexExpression,
+    public InsertConflictTarget(Collection<String> indexColumnNames, Expression indexExpression,
             Expression whereExpression, String constraintName) {
-        this.indexColumnNames.addAll(indexColumnName);
-        this.indexExpression = indexExpression;
-
+        if (indexColumnNames != null && !indexColumnNames.isEmpty()) {
+            addAllIndexColumnNames(indexColumnNames);
+        } else if (indexExpression != null) {
+            setIndexExpression(indexExpression);
+        }
         this.whereExpression = whereExpression;
         this.constraintName = constraintName;
     }
 
+    /** Ordered column and expression keys, including their collation and operator class. */
+    public List<Index.ColumnParams> getIndexElements() {
+        return indexElements;
+    }
+
+    public void setIndexElements(List<Index.ColumnParams> elements) {
+        List<Index.ColumnParams> copy = new ArrayList<>(elements);
+        indexElements.clear();
+        indexElements.addAll(copy);
+    }
+
+    public InsertConflictTarget withIndexElements(List<Index.ColumnParams> elements) {
+        setIndexElements(elements);
+        return this;
+    }
+
+    /** A mutable view of the column keys; expression keys are available via getIndexElements(). */
     public List<String> getIndexColumnNames() {
-        return indexColumnNames;
+        return new AbstractList<String>() {
+            private int elementIndex(int index) {
+                int columnIndex = 0;
+                for (int i = 0; i < indexElements.size(); i++) {
+                    if (!indexElements.get(i).isExpression() && columnIndex++ == index) {
+                        return i;
+                    }
+                }
+                throw new IndexOutOfBoundsException("Column index: " + index);
+            }
+
+            @Override
+            public String get(int index) {
+                return indexElements.get(elementIndex(index)).getColumnName();
+            }
+
+            @Override
+            public int size() {
+                return (int) indexElements.stream().filter(key -> !key.isExpression()).count();
+            }
+
+            @Override
+            public String set(int index, String name) {
+                return indexElements.set(elementIndex(index), new Index.ColumnParams(name))
+                        .getColumnName();
+            }
+
+            @Override
+            public void add(int index, String name) {
+                indexElements.add(index == size() ? indexElements.size() : elementIndex(index),
+                        new Index.ColumnParams(name));
+            }
+
+            @Override
+            public boolean addAll(Collection<? extends String> names) {
+                return addAll(size(), names);
+            }
+
+            @Override
+            public boolean addAll(int index, Collection<? extends String> names) {
+                int insertionIndex = index == size() ? indexElements.size() : elementIndex(index);
+                List<Index.ColumnParams> additions = new ArrayList<>();
+                for (String name : names) {
+                    additions.add(new Index.ColumnParams(name));
+                }
+                return indexElements.addAll(insertionIndex, additions);
+            }
+
+            @Override
+            public String remove(int index) {
+                return indexElements.remove(elementIndex(index)).getColumnName();
+            }
+        };
     }
 
     @Deprecated
     public String getIndexColumnName() {
-        return indexColumnNames.isEmpty() ? null : indexColumnNames.get(0);
+        return getIndexColumnName(0);
     }
 
     public String getIndexColumnName(int index) {
-        return indexColumnNames.size() > index ? indexColumnNames.get(index) : null;
+        List<String> names = getIndexColumnNames();
+        return names.size() > index ? names.get(index) : null;
     }
 
-    public boolean addIndexColumnName(String indexColumnName) {
-        this.indexExpression = null;
-        return this.indexColumnNames.add(indexColumnName);
+    public boolean addIndexColumnName(String name) {
+        indexElements.removeIf(Index.ColumnParams::isExpression);
+        return indexElements.add(new Index.ColumnParams(name));
     }
 
-    public InsertConflictTarget withIndexColumnName(String indexColumnName) {
-        this.indexExpression = null;
-        this.indexColumnNames.add(indexColumnName);
+    public InsertConflictTarget withIndexColumnName(String name) {
+        addIndexColumnName(name);
         return this;
     }
 
-    public boolean addAllIndexColumnNames(Collection<String> indexColumnName) {
-        this.indexExpression = null;
-        return this.indexColumnNames.addAll(indexColumnName);
+    public boolean addAllIndexColumnNames(Collection<String> names) {
+        indexElements.removeIf(Index.ColumnParams::isExpression);
+        return getIndexColumnNames().addAll(names);
     }
 
-
+    /** Returns the first expression key, or null for a column-only target. */
     public Expression getIndexExpression() {
-        return indexExpression;
+        return indexElements.stream().filter(Index.ColumnParams::isExpression)
+                .map(Index.ColumnParams::getExpression).findFirst().orElse(null);
     }
 
-    public void setIndexExpression(Expression indexExpression) {
-        this.indexExpression = indexExpression;
-        this.indexColumnNames.clear();
+    public void setIndexExpression(Expression expression) {
+        indexElements.clear();
+        if (expression != null) {
+            indexElements.add(new Index.ColumnParams(expression));
+        }
     }
 
-    public InsertConflictTarget withIndexExpression(Expression indexExpression) {
-        setIndexExpression(indexExpression);
+    public InsertConflictTarget withIndexExpression(Expression expression) {
+        setIndexExpression(expression);
         return this;
     }
 
@@ -121,35 +194,42 @@ public class InsertConflictTarget implements Serializable {
         return this;
     }
 
+    /** Visits expression keys and the optional index predicate. */
+    public <S> void accept(ExpressionVisitor<?> visitor, S context) {
+        for (Index.ColumnParams element : indexElements) {
+            if (element.getExpression() != null) {
+                element.getExpression().accept(visitor, context);
+            }
+        }
+        if (whereExpression != null) {
+            whereExpression.accept(visitor, context);
+        }
+    }
+
     public StringBuilder appendTo(StringBuilder builder) {
-        if (constraintName == null) {
-            builder.append(" ( ");
+        return appendTo(builder, expression -> builder.append(expression));
+    }
 
-            // @todo: Index Expression is not supported yet
-            if (!indexColumnNames.isEmpty()) {
-                boolean insertComma = false;
-                for (String s : indexColumnNames) {
-                    builder.append(insertComma ? ", " : " ").append(s);
-                    insertComma |= true;
-                }
-            } else {
-                builder.append(" ( ").append(indexExpression).append(" )");
+    public StringBuilder appendTo(StringBuilder builder, Consumer<Expression> expressionPrinter) {
+        if (constraintName != null) {
+            return builder.append(" ON CONSTRAINT ").append(constraintName);
+        }
+        builder.append(" (");
+        for (int i = 0; i < indexElements.size(); i++) {
+            if (i > 0) {
+                builder.append(", ");
             }
-            builder.append(" ");
-
-            // @todo: Collate is not supported yet
-
-            builder.append(") ");
-
-            if (whereExpression != null) {
-                builder.append(" WHERE ").append(whereExpression);
-            }
-        } else {
-            builder.append(" ON CONSTRAINT ").append(constraintName);
+            indexElements.get(i).appendTo(builder, expressionPrinter);
+        }
+        builder.append(")");
+        if (whereExpression != null) {
+            builder.append(" WHERE ");
+            expressionPrinter.accept(whereExpression);
         }
         return builder;
     }
 
+    @Override
     public String toString() {
         return appendTo(new StringBuilder()).toString();
     }

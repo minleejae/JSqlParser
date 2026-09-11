@@ -9,6 +9,10 @@
  */
 package net.sf.jsqlparser.util;
 
+import net.sf.jsqlparser.statement.role.CreateRole;
+import net.sf.jsqlparser.statement.role.AlterRole;
+import net.sf.jsqlparser.statement.grant.Revoke;
+import net.sf.jsqlparser.statement.grant.AlterDefaultPrivileges;
 import net.sf.jsqlparser.statement.create.type.CreateType;
 import net.sf.jsqlparser.statement.alter.AlterType;
 import net.sf.jsqlparser.statement.create.domain.CreateDomain;
@@ -125,6 +129,7 @@ import net.sf.jsqlparser.statement.delete.Delete;
 import net.sf.jsqlparser.statement.delete.ParenthesedDelete;
 import net.sf.jsqlparser.statement.drop.Drop;
 import net.sf.jsqlparser.statement.execute.Execute;
+import net.sf.jsqlparser.statement.execute.ExecuteArgument;
 import net.sf.jsqlparser.statement.export.Export;
 import net.sf.jsqlparser.statement.grant.Grant;
 import net.sf.jsqlparser.statement.imprt.Import;
@@ -509,7 +514,9 @@ public class TablesNamesFinder<Void>
     @Override
     public <S> Void visit(Table table, S context) {
         String tableWholeName = extractTableName(table);
-        if (!otherItemNames.contains(tableWholeName)) {
+        if (table.isTableVariable()) {
+            otherItemNames.add(tableWholeName);
+        } else if (!otherItemNames.contains(tableWholeName)) {
             tables.add(tableWholeName);
         }
         if (table.getPivot() != null) {
@@ -1457,6 +1464,9 @@ public class TablesNamesFinder<Void>
         if (insert.getConflictAction() != null) {
             visitInsertAction(insert.getConflictAction(), context);
         }
+        if (insert.getConflictTarget() != null) {
+            insert.getConflictTarget().accept(this, context);
+        }
         visitOutputClause(insert.getOutputClause(), context);
         visitReturningClause(insert.getReturningClause(), context);
         if (insert.getSelect() != null) {
@@ -1614,7 +1624,7 @@ public class TablesNamesFinder<Void>
 
     @Override
     public <S> Void visit(CreateTrigger createTrigger, S context) {
-        createTrigger.getTable().accept(this, context);
+        createTrigger.visit(t -> t.accept(this, context), e -> e.accept(this, context));
         if (createTrigger.getBody() != null) {
             createTrigger.getBody().accept(this, context);
         }
@@ -1693,6 +1703,11 @@ public class TablesNamesFinder<Void>
     public <S> Void visit(Execute execute, S context) {
         throwUnsupported(execute);
         return null;
+    }
+
+    @Override
+    public <S> Void visit(ExecuteArgument argument, S context) {
+        return argument.getExpression().accept(this, context);
     }
 
     @Override
@@ -1785,6 +1800,7 @@ public class TablesNamesFinder<Void>
                 operation.accept(this, context);
             }
         }
+        visitReturningClause(merge.getReturningClause(), context);
         return null;
     }
 
@@ -2063,6 +2079,7 @@ public class TablesNamesFinder<Void>
 
     @Override
     public <S> Void visit(Grant grant, S context) {
+        grant.getClause().visit(t -> t.accept(this, context), e -> e.accept(this, context));
         return null;
     }
 
@@ -2512,6 +2529,27 @@ public class TablesNamesFinder<Void>
     @Override
     public void visit(CreatePolicy createPolicy) {
         StatementVisitor.super.visit(createPolicy);
+    }
+
+    @Override
+    public <S> Void visit(CreateRole statement, S context) {
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterRole statement, S context) {
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(Revoke statement, S context) {
+        statement.getClause().visit(t -> t.accept(this, context), e -> e.accept(this, context));
+        return null;
+    }
+
+    @Override
+    public <S> Void visit(AlterDefaultPrivileges statement, S context) {
+        return null;
     }
 
     @Override

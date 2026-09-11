@@ -12,8 +12,8 @@ package net.sf.jsqlparser.expression;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import net.sf.jsqlparser.expression.operators.arithmetic.Addition;
 import net.sf.jsqlparser.expression.operators.arithmetic.BitwiseAnd;
 import net.sf.jsqlparser.expression.operators.arithmetic.BitwiseLeftShift;
@@ -119,11 +119,9 @@ public class ExpressionVisitorAdapter<T>
         if (function.getKeep() != null) {
             subExpressions.add(function.getKeep());
         }
-        if (function.getOrderByElements() != null) {
-            for (OrderByElement orderByElement : function.getOrderByElements()) {
-                subExpressions.add(orderByElement.getExpression());
-            }
-        }
+        addOrderByExpressions(subExpressions, function.getOrderByElements());
+        addFunctionModifiers(subExpressions, function.getHavingClause(),
+                function.getKeywordArguments(), function.getLimit());
         return visitExpressions(function, context, subExpressions);
     }
 
@@ -419,29 +417,41 @@ public class ExpressionVisitorAdapter<T>
         if (analyticExpression.getKeep() != null) {
             subExpressions.add(analyticExpression.getKeep());
         }
-        if (analyticExpression.getFuncOrderBy() != null) {
-            for (OrderByElement element : analyticExpression.getOrderByElements()) {
-                subExpressions.add(element.getExpression());
-            }
-        }
-        if (analyticExpression.getWindowElement() != null) {
-            /*
-             * Visit expressions from the range and offset of the window element. Do this using
-             * optional chains, because several things down the tree can be null e.g. the
-             * expression. So, null-safe versions of e.g.:
-             * analyticExpression.getWindowElement().getOffset().getExpression().accept(this,
-             * parameters);
-             */
-            Optional.ofNullable(analyticExpression.getWindowElement().getRange())
-                    .map(WindowRange::getStart)
-                    .map(WindowOffset::getExpression).ifPresent(subExpressions::add);
-            Optional.ofNullable(analyticExpression.getWindowElement().getRange())
-                    .map(WindowRange::getEnd)
-                    .map(WindowOffset::getExpression).ifPresent(subExpressions::add);
-            Optional.ofNullable(analyticExpression.getWindowElement().getOffset())
-                    .map(WindowOffset::getExpression).ifPresent(subExpressions::add);
+        subExpressions.add(analyticExpression.getFilterExpression());
+        addOrderByExpressions(subExpressions, analyticExpression.getFuncOrderBy());
+        addFunctionModifiers(subExpressions, analyticExpression.getHavingClause(),
+                analyticExpression.getKeywordArguments(), analyticExpression.getLimit());
+        if (analyticExpression.getWindowDefinition() != null) {
+            subExpressions.addAll(analyticExpression.getWindowDefinition().getAllExpressions());
         }
         return visitExpressions(analyticExpression, context, subExpressions);
+    }
+
+    private static void addOrderByExpressions(List<Expression> expressions,
+            List<OrderByElement> orderBy) {
+        if (orderBy != null) {
+            for (OrderByElement element : orderBy) {
+                expressions.add(element.getExpression());
+            }
+        }
+    }
+
+    private static void addFunctionModifiers(List<Expression> expressions,
+            Function.HavingClause having, List<Function.KeywordArgument> arguments,
+            net.sf.jsqlparser.statement.select.Limit limit) {
+        expressions.add(having);
+        if (arguments != null) {
+            for (Function.KeywordArgument argument : arguments) {
+                expressions.add(argument.getExpression());
+            }
+        }
+        if (limit != null) {
+            expressions.add(limit.getOffset());
+            expressions.add(limit.getRowCount());
+            if (limit.getByExpressions() != null) {
+                expressions.addAll(limit.getByExpressions());
+            }
+        }
     }
 
     @Override

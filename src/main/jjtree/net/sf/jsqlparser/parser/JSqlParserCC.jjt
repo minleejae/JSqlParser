@@ -78,6 +78,7 @@ import net.sf.jsqlparser.statement.update.*;
 import net.sf.jsqlparser.statement.upsert.*;
 import net.sf.jsqlparser.statement.merge.*;
 import net.sf.jsqlparser.statement.grant.*;
+import net.sf.jsqlparser.statement.role.*;
 import net.sf.jsqlparser.statement.imprt.*;
 import net.sf.jsqlparser.statement.export.*;
 import net.sf.jsqlparser.statement.lock.*;
@@ -124,6 +125,21 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
     // depth of DuckDB MAP keys: the following ":" separates a key from its value
     // and must not be taken as the JSON path operator
     private int mapKeyDepth = 0;
+
+    private Expression createOutputArgument(Expression argument) throws ParseException {
+        Expression value = argument;
+        if (argument instanceof VariableAssignment) {
+            value = ((VariableAssignment) argument).getExpression();
+        } else if (argument instanceof EqualsTo
+                && ((EqualsTo) argument).getLeftExpression() instanceof UserVariable) {
+            value = ((EqualsTo) argument).getRightExpression();
+        }
+        if (!(value instanceof UserVariable || value instanceof JdbcParameter
+                || value instanceof JdbcNamedParameter)) {
+            throw new ParseException("An OUTPUT argument must be a variable or bind parameter");
+        }
+        return new net.sf.jsqlparser.statement.execute.ExecuteArgument(argument, true);
+    }
 
     private void linkAST(ASTNodeAccess access, Node node) {
         access.setASTNode(node);
@@ -1166,6 +1182,12 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         // String-literal alias:  SELECT col 'myAlias'
         if (kind == S_CHAR_LITERAL) return true;
 
+        // WITHIN followed by a duration starts a ksqlDB JOIN window.
+        if (kind == K_WITHIN && (getToken(2).kind == S_LONG
+                || getToken(2).kind == OPENING_BRACKET && getToken(3).kind == S_LONG)) {
+            return false;
+        }
+
         // OPTION (...) introduces a query hint clause, not an alias
         if (kind == K_OPTION && getToken(2).kind == OPENING_BRACKET) {
             return false;
@@ -1325,6 +1347,71 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
             } else if (t.kind == K_DO && depth == 0) {
                 return true;
             }
+        }
+    }
+
+    private static void requireAccessSyntax(boolean condition, String message) throws ParseException {
+        if (!condition) { throw new ParseException(message); }
+    }
+
+    private static <E extends Enum<E>> E accessEnum(Class<E> type, String value) throws ParseException {
+        try { return Enum.valueOf(type, value.toUpperCase(Locale.ROOT)); }
+        catch (IllegalArgumentException ex) { throw new ParseException("Invalid " + type.getSimpleName() + ": " + value); }
+    }
+
+    private boolean isRoleOptionAhead(int offset) {
+        if (getToken(offset).kind == EOF) { return false; }
+        String word = getToken(offset).image.toUpperCase(Locale.ROOT);
+        return Arrays.asList("SUPERUSER", "NOSUPERUSER", "CREATEDB", "NOCREATEDB", "CREATEROLE", "NOCREATEROLE",
+            "INHERIT", "NOINHERIT", "LOGIN", "NOLOGIN", "REPLICATION", "NOREPLICATION", "BYPASSRLS", "NOBYPASSRLS",
+            "CONNECTION", "ENCRYPTED", "PASSWORD", "VALID", "IN", "ROLE", "USER", "ADMIN", "SYSID").contains(word);
+    }
+
+    private boolean isPostgreSqlRoleAhead() {
+        if (isAccessKeywordAhead("ROLE") || isAccessKeywordAhead("GROUP")) { return true; }
+        return isAccessKeywordAhead("USER") && !"MAPPING".equalsIgnoreCase(getToken(2).image)
+            && (Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect))
+                || "WITH".equalsIgnoreCase(getToken(3).image) || isRoleOptionAhead(3));
+    }
+
+    private boolean isAccessKeywordAhead(String word) {
+        return getToken(1).kind != EOF && isKeywordAhead(word);
+    }
+
+    private boolean isAccessTargetKindAhead() {
+        Token next = getToken(2);
+        return next.kind != EOF && next.kind != K_TO && next.kind != K_FROM
+            && !",".equals(next.image) && !".".equals(next.image)
+            && isAccessTargetKindAhead(1);
+    }
+
+    private boolean isAccessTargetKindAhead(int offset) {
+        return Arrays.asList("TABLE", "SEQUENCE", "DATABASE", "DOMAIN", "FOREIGN", "FUNCTION", "PROCEDURE",
+            "ROUTINE", "LANGUAGE", "LARGE", "PARAMETER", "SCHEMA", "TABLESPACE", "TYPE")
+            .contains(getToken(offset).image.toUpperCase(Locale.ROOT));
+    }
+
+    private boolean isObjectPrivilegeAhead() {
+        int depth = 0;
+        for (int i = 1; ; i++) {
+            Token token = getToken(i);
+            if (token.kind == EOF || ";".equals(token.image)) { return false; }
+            if ("(".equals(token.image)) { depth++; }
+            else if (")".equals(token.image)) { depth--; }
+            else if (depth == 0) {
+                if (token.kind == K_ON) { return true; }
+                if (token.kind == K_TO || token.kind == K_FROM) { return false; }
+            }
+        }
+    }
+
+    private boolean isPostgreSqlTriggerAhead() {
+        if (getToken(1).kind == K_CONSTRAINT) { return true; }
+        if (getToken(1).kind != K_TRIGGER) { return false; }
+        for (int i = 2; ; i++) {
+            Token token = getToken(i);
+            if (token.kind == EOF || ";".equals(token.image) || token.kind == K_BEGIN) { return false; }
+            if (token.kind == K_EXECUTE && (getToken(i + 1).kind == K_FUNCTION || getToken(i + 1).kind == K_PROCEDURE)) { return true; }
         }
     }
 
@@ -1598,38 +1685,42 @@ TOKEN_MGR_DECLS : {
 		return -1;
 	}
 
-    private static boolean endsWithDelimiter(Deque<Character> windowQueue, String delimiter) {
-        if (windowQueue.size() != delimiter.length()) {
-            return false;
-        }
-
-        int i = 0;
-        for (char ch : windowQueue) {
-            if (ch != delimiter.charAt(i++)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
+    /** Scans a literal in linear time without tokenizing or rebuilding its whitespace. */
     public void consumeDollarQuotedString(String closingQuote) {
-        Deque<Character> windowQueue = new ArrayDeque<Character>();
-        int delimiterLength = closingQuote.length();
-
+        int[] prefix = new int[closingQuote.length()];
+        for (int i = 1, matched = 0; i < closingQuote.length(); i++) {
+            while (matched > 0 && closingQuote.charAt(i) != closingQuote.charAt(matched)) {
+                matched = prefix[matched - 1];
+            }
+            if (closingQuote.charAt(i) == closingQuote.charAt(matched)) {
+                matched++;
+            }
+            prefix[i] = matched;
+        }
         try {
-            while (true) {
+            int matched = 0;
+            while (matched < closingQuote.length()) {
                 char ch = input_stream.readChar();
-                windowQueue.addLast(ch);
-                if (windowQueue.size() > delimiterLength) {
-                    windowQueue.removeFirst();
+                while (matched > 0 && ch != closingQuote.charAt(matched)) {
+                    matched = prefix[matched - 1];
                 }
-                if (endsWithDelimiter(windowQueue, closingQuote)) {
-                    return;
+                if (ch == closingQuote.charAt(matched)) {
+                    matched++;
                 }
             }
         } catch (java.io.IOException e) {
             reportError(Math.max(closingQuote.length(), input_stream.GetImage().length()));
         }
+    }
+
+    /** Rewinds any identifier suffix consumed by longest-match lexing before scanning the body. */
+    private void consumeDollarQuotedToken(Token token, String delimiter) {
+        input_stream.backup(token.image.length() - delimiter.length());
+        consumeDollarQuotedString(delimiter);
+        token.image = input_stream.GetImage();
+        token.kind = charLiteralIndex;
+        token.endLine = input_stream.getEndLine();
+        token.endColumn = input_stream.getEndColumn();
     }
 
     /**
@@ -1971,6 +2062,7 @@ String NonReservedWord() :
       | tk=<K_REPEATABLE: "REPEATABLE">
       | tk=<K_REPLACE:"REPLACE">
       | tk=<K_RESET:"RESET">
+      | tk=<K_REVOKE:"REVOKE">
       | tk=<K_RESTART:"RESTART">
       | tk=<K_RESUMABLE: "RESUMABLE">
       | tk=<K_RESUME: "RESUME">
@@ -2340,9 +2432,7 @@ TOKEN:
 |
 <S_DOLLAR_QUOTED_STRING: "$$">
     {
-        consumeDollarQuotedString(matchedToken.image);
-        matchedToken.image = input_stream.GetImage();
-        matchedToken.kind = charLiteralIndex;
+        consumeDollarQuotedToken(matchedToken, matchedToken.image);
     }
 |
 // Bare `#` as a binary operator (PostgreSQL bitwise XOR / geometric
@@ -2353,6 +2443,13 @@ TOKEN:
 |
 <S_IDENTIFIER: (<LETTER> (<PART_LETTER>)*) | "$" | ("$" <PART_LETTER_NO_DOLLAR> (<PART_LETTER>)*)>
 {
+    if (matchedToken.image.charAt(0) == '$'
+            && Boolean.TRUE.equals(configuration.getValue(Feature.allowDollarQuotedStringTags))) {
+        String delimiter = StringValue.getDollarQuoteDelimiter(matchedToken.image);
+        if (delimiter != null) {
+            consumeDollarQuotedToken(matchedToken, delimiter);
+        }
+    }
     // MySQL `#` line comments (#2499): under the flag an unquoted identifier
     // ends at its first `#`, the rest of the line becomes a comment via the
     // stream-level substitution (real MySQL reads `42#24` as `42` plus
@@ -2361,7 +2458,7 @@ TOKEN:
     // that never opted in (the stream is only wired through the feature
     // consumers / withConfiguration); getValue avoids the String-based
     // getAsBoolean roundtrip
-    if (input_stream.featureConfiguration != null
+    if (matchedToken.kind == S_IDENTIFIER && input_stream.featureConfiguration != null
             && Boolean.TRUE.equals(configuration.getValue(Feature.allowHashLineComments))) {
         int hashIndex = matchedToken.image.indexOf('#');
         if (hashIndex > 0) {
@@ -2633,6 +2730,8 @@ Statement SingleStatement() :
             stm = Declare()
             |
             stm = Grant()
+            |
+            LOOKAHEAD({ isKeywordAhead("REVOKE") }) stm = Revoke(false)
             |
             stm = PurgeStatement()
             |
@@ -4568,14 +4667,18 @@ Insert Insert():
                 <K_OVERWRITE> <K_TABLE> { insert.setOverwrite(true); insert.setTableKeyword(true); }
                 | <K_INTO> [ LOOKAHEAD(2) <K_TABLE> { insert.setTableKeyword(true); }]
                 )
-            ]   table=Table()
+            ]   table=TableReference()
             [ LOOKAHEAD(2) <K_PARTITION> "(" partitions=Partitions() ")" ]
 
-            [ LOOKAHEAD({ isAliasAhead() }) [<K_AS> { useAs = true; } ] name=RelObjectName() { table.setAlias(new Alias(name,useAs)); }]
+            [ LOOKAHEAD({ isAliasAhead() && !(getToken(1).kind == K_OVERRIDING
+                    && (getToken(2).kind == K_SYSTEM || getToken(2).kind == K_USER)) })
+                [<K_AS> { useAs = true; } ] name=RelObjectName() { table.setAlias(new Alias(name,useAs)); }]
 
             [ LOOKAHEAD(2) "(" columns=ColumnList() ")"  ]
 
-            [ LOOKAHEAD(2) <K_OVERRIDING> <K_SYSTEM> <K_VALUE> { insert.setOverriding(true); } ]
+            [ LOOKAHEAD(2) <K_OVERRIDING>
+                ( <K_SYSTEM> { insert.setOverridingMode(Insert.OverridingMode.SYSTEM); }
+                | <K_USER> { insert.setOverridingMode(Insert.OverridingMode.USER); } ) <K_VALUE> ]
 
             [ outputClause = OutputClause() { insert.setOutputClause(outputClause); } ]
 
@@ -4693,35 +4796,46 @@ List<OracleMultiInsertClause> OracleMultiInsertClauseList():
     }
 }
 
-InsertConflictTarget  InsertConflictTarget():
+InsertConflictTarget InsertConflictTarget():
 {
-    String indexColumnName;
-    ArrayList<String> indexColumnNames = new ArrayList<String>();
-    Expression indexExpression = null;
-    Expression whereExpression = null;
-    String constraintName = null ;
+    InsertConflictTarget target = new InsertConflictTarget();
+    List<Index.ColumnParams> elements = new ArrayList<Index.ColumnParams>();
+    Index.ColumnParams element;
+    Expression whereExpression;
+    String constraintName;
 }
 {
     (
-        (
-            "("
-            indexColumnName = RelObjectNameExt() { indexColumnNames.add(indexColumnName); }
-            ( "," indexColumnName = RelObjectNameExt() { indexColumnNames.add(indexColumnName); } )*
-//            |
-//            (
-//                "(" indexExpression = Expression() ")"
-//            )
-
-            ")"
-            [ whereExpression = WhereClause() ]
-        )
+        "(" element=InsertConflictIndexElement() { elements.add(element); }
+        ( "," element=InsertConflictIndexElement() { elements.add(element); } )* ")"
+        { target.setIndexElements(elements); }
+        [ whereExpression=WhereClause() { target.setWhereExpression(whereExpression); } ]
         |
-        (
-         <K_ON> <K_CONSTRAINT> constraintName = RelObjectNameExt()
-        )
+        <K_ON> <K_CONSTRAINT> constraintName=RelObjectNameExt()
+        { target.setConstraintName(constraintName); }
     )
+    { return target; }
+}
 
-    { return new InsertConflictTarget(indexColumnNames, indexExpression, whereExpression, constraintName); }
+Index.ColumnParams InsertConflictIndexElement():
+{
+    Index.ColumnParams element;
+    String name;
+    Expression expression;
+    ObjectNames collation;
+    ObjectNames operatorClass;
+}
+{
+    (
+        LOOKAHEAD({ isFunctionAhead() }) expression=Function()
+        { element = new Index.ColumnParams(expression).withExpressionParenthesized(false); }
+        | name=RelObjectNameExt() { element = new Index.ColumnParams(name); }
+        | "(" expression=Expression() ")" { element = new Index.ColumnParams(expression); }
+    )
+    [ LOOKAHEAD(2) <K_COLLATE> collation=RelObjectNames()
+        { element.setCollation(new Table(collation.getNames()).getFullyQualifiedName()); } ]
+    [ LOOKAHEAD(2) operatorClass=RelObjectNames() { element.setOperatorClass(new Table(operatorClass.getNames()).getFullyQualifiedName()); } ]
+    { return element; }
 }
 
 InsertConflictAction InsertConflictAction():
@@ -4920,6 +5034,7 @@ Statement Merge( List<WithItem<?>> with ) : {
     Expression condition;
     List<MergeOperation> operations;
     OutputClause outputClause;
+    ReturningClause returningClause;
     OptionClause optionClause = null;
 }
 {
@@ -4928,6 +5043,8 @@ Statement Merge( List<WithItem<?>> with ) : {
     <K_ON> condition = Expression() { merge.setOnCondition(condition); }
 
     operations = MergeOperations() { merge.setOperations(operations); }
+
+    [ returningClause = ReturningClause() { merge.setReturningClause(returningClause); } ]
 
     [ outputClause = OutputClause() { merge.setOutputClause(outputClause); } ]
 
@@ -5195,13 +5312,39 @@ Table Table() #TableName :
     }
 }
 
+/** A table source or DML target; catalog-only DDL continues to use Table(). */
+Table TableReference() #void :
+{
+    Table table;
+}
+{
+    ( table=TableVariable() | table=Table() )
+    { return table; }
+}
+
+Table TableVariable() #TableName :
+{
+    Token variable;
+    Table table;
+}
+{
+    variable=<S_AT_IDENTIFIER>
+    {
+        requireAccessSyntax(!variable.image.startsWith("@@"),
+                "A table variable must be a local variable");
+        table = new Table(variable.image, false).withTableVariable(true);
+        linkAST(table, jjtThis);
+        return table;
+    }
+}
+
 Table TableWithAlias():
 {
     Table table = null;
     Alias alias = null;
 }
 {
-    table=Table()
+    table=TableReference()
     [ LOOKAHEAD({ isAliasAhead() }) alias=Alias() { table.setAlias(alias); }]
     { return table; }
 }
@@ -5209,12 +5352,10 @@ Table TableWithAlias():
 Table TableWithAliasAndMysqlIndexHint():
 {
     Table table = null;
-    Alias alias = null;
     MySQLIndexHint indexHint = null;
 }
 {
-    table=Table()
-    [ LOOKAHEAD({ isAliasAhead() }) alias=Alias() { table.setAlias(alias); } ]
+    table=TableWithAlias()
     [ LOOKAHEAD(2) indexHint=MySQLIndexHint() { table.setHint(indexHint); } ]
     { return table; }
 }
@@ -6099,7 +6240,9 @@ PlainSelect PlainSelect() #PlainSelect:
     [ LOOKAHEAD(2) interpolateElements = InterpolateClause() { plainSelect.setInterpolate(interpolateElements); } ]
     [ LOOKAHEAD(2) forClause = ForClause() {plainSelect.setForClause(forClause);} ]
     [ LOOKAHEAD(2) optionClause = OptionClause() { plainSelect.setOption(optionClause); } ]
-    [ LOOKAHEAD(2) <K_EMIT> <K_CHANGES> { plainSelect.setEmitChanges(true); } ]
+    [ LOOKAHEAD(2) <K_EMIT>
+        ( <K_CHANGES> { plainSelect.setEmitMode(PlainSelect.EmitMode.CHANGES); }
+        | <K_FINAL> { plainSelect.setEmitMode(PlainSelect.EmitMode.FINAL); } ) ]
     // Parse the LIMIT row count once (this accepts a parenthesized subquery too), then
     // optionally attach ClickHouse's `LIMIT ... BY ...`. Checking BY right after the limit
     // expression avoids a numeric LOOKAHEAD, which cannot see past a long parenthesized
@@ -6996,7 +7139,7 @@ FromItem FromItem() #FromItem:
             || (getToken(1).kind == K_LATERAL && getToken(2).kind != OPENING_BRACKET) })
         fromItem=TableFunction()
         |
-        LOOKAHEAD(3) fromItem=Table()
+        LOOKAHEAD(3) fromItem=TableReference()
         |
         LOOKAHEAD({ isNestedSetOperationAhead() }) (
             fromItem=ParenthesedSelect()
@@ -7131,7 +7274,7 @@ Join JoinerExpression() #JoinerExpression:
 
     [
         LOOKAHEAD(2) (
-                        [ <K_WITHIN> "(" joinWindow = JoinWindow() ")" {join.setJoinWindow(joinWindow);} ]
+                        [ <K_WITHIN> joinWindow = KSQLJoinWindowClause() {join.setJoinWindow(joinWindow);} ]
                         ( <K_ON> onExpression=Expression()  { join.addOnExpression(onExpression); }
                           ( LOOKAHEAD({ getToken(1).kind == K_ON && !isInsertOnConflictAhead() })  <K_ON> onExpression=Expression()  { join.addOnExpression(onExpression); } )*
                         )
@@ -7151,74 +7294,95 @@ Join JoinerExpression() #JoinerExpression:
 
 }
 
-KSQLJoinWindow JoinWindow():
+/** Shared duration parsing for JOIN, aggregation windows, and grace periods. */
+KSQLWindow.Duration KSQLDuration():
 {
-    KSQLJoinWindow retval = new KSQLJoinWindow();
-    boolean beforeAfter;
-    Token beforeDurationToken = null;
-    Token beforeTimeUnitToken = null;
-    Token afterDurationToken = null;
-    Token afterTimeUnitToken = null;
+    Token value;
+    Token unit;
 }
 {
-    beforeDurationToken=<S_LONG> (beforeTimeUnitToken=<S_IDENTIFIER> | beforeTimeUnitToken=<K_DATE_LITERAL>)
-    [ "," afterDurationToken=<S_LONG> (afterTimeUnitToken=<S_IDENTIFIER> | afterTimeUnitToken=<K_DATE_LITERAL>) ]
-    {
-        if (afterDurationToken == null) {
-            retval.setDuration(Long.parseLong(beforeDurationToken.image));
-            retval.setTimeUnit(KSQLWindow.TimeUnit.from(beforeTimeUnitToken.image));
-            retval.setBeforeAfterWindow(false);
-            return retval;
+    value=<S_LONG> ( unit=<S_IDENTIFIER> | unit=<K_DATE_LITERAL> )
+    { return new KSQLWindow.Duration(Long.parseLong(value.image), KSQLWindow.TimeUnit.from(unit.image)); }
+}
+
+KSQLWindow.Duration KSQLGracePeriod():
+{
+    KSQLWindow.Duration duration;
+}
+{
+    AccessKeyword("GRACE") AccessKeyword("PERIOD") duration=KSQLDuration()
+    { return duration; }
+}
+
+KSQLJoinWindow KSQLJoinWindowClause():
+{
+    KSQLJoinWindow window;
+    KSQLWindow.Duration duration;
+}
+{
+    (
+        "(" window=JoinWindow() ")"
+        |
+        duration=KSQLDuration() {
+            window = new KSQLJoinWindow().withDuration(duration.getValue())
+                    .withTimeUnit(duration.getTimeUnit()).withUsingBrackets(false);
         }
-        retval.setBeforeDuration(Long.parseLong(beforeDurationToken.image));
-        retval.setBeforeTimeUnit(KSQLWindow.TimeUnit.from(beforeTimeUnitToken.image));
-        retval.setAfterDuration(Long.parseLong(afterDurationToken.image));
-        retval.setAfterTimeUnit(KSQLWindow.TimeUnit.from(afterTimeUnitToken.image));
-        retval.setBeforeAfterWindow(true);
-        return retval;
+    )
+    [ LOOKAHEAD({ isKeywordAhead("GRACE") }) duration=KSQLGracePeriod() { window.setGracePeriod(duration); } ]
+    { return window; }
+}
+
+KSQLJoinWindow JoinWindow():
+{
+    KSQLJoinWindow window = new KSQLJoinWindow();
+    KSQLWindow.Duration before;
+    KSQLWindow.Duration after = null;
+}
+{
+    before=KSQLDuration()
+    [ "," after=KSQLDuration() ]
+    {
+        if (after == null) {
+            window.setDuration(before.getValue());
+            window.setTimeUnit(before.getTimeUnit());
+        } else {
+            window.setBeforeDuration(before.getValue());
+            window.setBeforeTimeUnit(before.getTimeUnit());
+            window.setAfterDuration(after.getValue());
+            window.setAfterTimeUnit(after.getTimeUnit());
+            window.setBeforeAfterWindow(true);
+        }
+        return window;
     }
 }
 
 KSQLWindow KSQLWindowClause():
 {
-    KSQLWindow retval = null;
-    Token sizeDurationToken = null;
-    Token sizeTimeUnitToken = null;
-    Token advanceDurationToken = null;
-    Token advanceTimeUnitToken = null;
+    KSQLWindow window = new KSQLWindow();
+    KSQLWindow.Duration size;
+    KSQLWindow.Duration advance;
+    KSQLWindow.Duration grace;
 }
 {
     <K_WINDOW>
-    {
-        retval=new KSQLWindow();
-        retval.setHoppingWindow(false);
-        retval.setSessionWindow(false);
-        retval.setTumblingWindow(false);
-    }
     (
-        <K_HOPPING> "("
-            <K_SIZE> sizeDurationToken=<S_LONG> sizeTimeUnitToken=<S_IDENTIFIER> ","
-            <K_ADVANCE> <K_BY> advanceDurationToken=<S_LONG> advanceTimeUnitToken=<S_IDENTIFIER> ")"
-        {
-            retval.setHoppingWindow(true);
-        } |
-        <K_SESSION> "(" sizeDurationToken=<S_LONG> sizeTimeUnitToken=<S_IDENTIFIER> ")"
-        {
-            retval.setSessionWindow(true);
-        } |
-        <K_TUMBLING> "(" <K_SIZE> sizeDurationToken=<S_LONG> sizeTimeUnitToken=<S_IDENTIFIER> ")"
-        {
-            retval.setTumblingWindow(true);
+        <K_HOPPING> "(" <K_SIZE> size=KSQLDuration()
+            "," <K_ADVANCE> <K_BY> advance=KSQLDuration() {
+            window.setHoppingWindow(true);
+            window.setAdvanceDuration(advance.getValue());
+            window.setAdvanceTimeUnit(advance.getTimeUnit());
         }
+        |
+        <K_SESSION> "(" size=KSQLDuration() { window.setSessionWindow(true); }
+        |
+        <K_TUMBLING> "(" <K_SIZE> size=KSQLDuration() { window.setTumblingWindow(true); }
     )
+    [ "," grace=KSQLGracePeriod() { window.setGracePeriod(grace); } ]
+    ")"
     {
-            retval.setSizeDuration(Long.parseLong(sizeDurationToken.image));
-            retval.setSizeTimeUnit(KSQLWindow.TimeUnit.from(sizeTimeUnitToken.image));
-            if (advanceDurationToken != null) {
-                retval.setAdvanceDuration(Long.parseLong(advanceDurationToken.image));
-                retval.setAdvanceTimeUnit(KSQLWindow.TimeUnit.from(advanceTimeUnitToken.image));
-            }
-            return retval;
+        window.setSizeDuration(size.getValue());
+        window.setSizeTimeUnit(size.getTimeUnit());
+        return window;
     }
 }
 
@@ -10605,27 +10769,48 @@ EqualsTo VariableExpression(): {
 }
 
 Execute Execute(): {
-    Token token;
     ObjectNames funcName;
-    ExpressionList expressionList = null;
+    ExpressionList expressionList;
     Execute execute = new Execute();
-    List<Expression> namedExprList;
-    Expression expr;
 }
 {
     (<K_EXEC> { execute.setExecType(Execute.ExecType.EXEC); }
         | <K_EXECUTE> { execute.setExecType(Execute.ExecType.EXECUTE); }
         | <K_CALL> { execute.setExecType(Execute.ExecType.CALL); } )
 
-    funcName=RelObjectNames() { execute.setName(funcName.getNames()); }
+    // A colon starts a bind argument here; it must not join the procedure name.
+    funcName=ColumnIdentifier() { execute.setName(funcName.getNames()); }
+    [ LOOKAHEAD(2) expressionList=ExecuteArguments() { execute.setExprList(expressionList); } ]
+    { return execute; }
+}
 
+ExpressionList ExecuteArguments(): {
+    ExpressionList arguments = new ExpressionList();
+    Expression argument;
+}
+{
     (
-        LOOKAHEAD(2)  expressionList=ExpressionList() { execute.setExprList(expressionList); }
-    )?
+        LOOKAHEAD("(") arguments=ExpressionList()
+        |
+        argument=ExecuteArgument() { arguments.add(argument); }
+        ( "," argument=ExecuteArgument() { arguments.add(argument); } )*
+    )
+    { return arguments; }
+}
 
-    {
-        return execute;
-    }
+Expression ExecuteArgument(): {
+    Expression argument;
+    boolean output = false;
+}
+{
+    argument=Expression()
+    [
+        LOOKAHEAD({ isAccessKeywordAhead("OUTPUT") || isAccessKeywordAhead("OUT") })
+        ( <K_OUTPUT> | AccessKeyword("OUT") )
+        { output = true; }
+    ]
+    { return output ? createOutputArgument(argument) : argument; }
+
 }
 
 FullTextSearch FullTextSearch() : {
@@ -11745,7 +11930,8 @@ CreateIndex CreateIndex():
     [ LOOKAHEAD(2) <K_TABLESPACE> tableSpace=RelObjectName()
         { createIndex.setTableSpace(tableSpace); } ]
     [ LOOKAHEAD(2) <K_WHERE> where=Expression() { createIndex.setWhere(where); } ]
-    ( LOOKAHEAD(2)  parameter=CreateParameter() { tailParameters.addAll(parameter); } )*
+    ( LOOKAHEAD(2, { getToken(1).kind != K_LOCK || getToken(2).kind != K_TABLE })
+        parameter=CreateIndexTailOption() { tailParameters.addAll(parameter); } )*
     {
         index.setColumns(colNames);
         createIndex.setIndex(index);
@@ -11753,6 +11939,35 @@ CreateIndex CreateIndex():
         createIndex.setTailParameters(tailParameters);
         return createIndex;
     }
+}
+
+List<String> CreateIndexTailOption():
+{
+    List<String> option;
+}
+{
+    (
+        LOOKAHEAD({ getToken(1).kind == K_ALGORITHM || getToken(1).kind == K_LOCK })
+        option=IndexAlgorithmOrLockOption()
+        |
+        option=CreateParameter()
+    )
+    { return option; }
+}
+
+// CREATE INDEX and DROP INDEX share MySQL's algorithm_option / lock_option syntax.
+// Keep the legacy token list, including optional equals signs and the original order.
+List<String> IndexAlgorithmOrLockOption():
+{
+    List<String> option = new ArrayList<String>();
+    Token keyword;
+    Token value;
+}
+{
+    ( keyword=<K_ALGORITHM> | keyword=<K_LOCK> ) { option.add(keyword.image); }
+    [ "=" { option.add("="); } ]
+    ( value=<K_DEFAULT> | value=<K_NONE> | value=<K_EXCLUSIVE> | value=<S_IDENTIFIER> )
+    { option.add(value.image); return option; }
 }
 
 List<String> ColumnDefinitionParameter(): {
@@ -13553,6 +13768,7 @@ Drop Drop():
     Table name;
     List<String> dropArgs = new ArrayList<String>();
     List<String> funcArgs = null;
+    List<String> indexOption;
     boolean useTemporary = false;
 }
 {
@@ -13589,6 +13805,10 @@ Drop Drop():
     ( "," name = Table() { drop.addNames(name); } )*
     [ LOOKAHEAD(2)  funcArgs = FuncArgsList() ]
     (
+        LOOKAHEAD({ getToken(1).kind == K_ALGORITHM
+                || (getToken(1).kind == K_LOCK && getToken(2).kind != K_TABLE) })
+        indexOption=IndexAlgorithmOrLockOption() { dropArgs.addAll(indexOption); }
+        |
         (
             tk=<S_IDENTIFIER> | tk=<K_CASCADE> | tk=<K_RESTRICT>
             // MySQL DROP INDEX accepts a trailing algorithm_option / lock_option,
@@ -14354,6 +14574,36 @@ DefaultConstraint DefaultConstraintSpec():
     { return constraint; }
 }
 
+/** Parses Informix's ADD CONSTRAINT definition [CONSTRAINT name]. */
+NamedConstraint InformixConstraint():
+{
+    NamedConstraint constraint;
+    Token type;
+    List<String> columns;
+    String name;
+}
+{
+    <K_CONSTRAINT>
+    (
+        ( type=<K_PRIMARY> <K_KEY> | type=<K_UNIQUE> )
+        columns=ColumnsNamesList() {
+            constraint = new NamedConstraint()
+                    .withType(type.kind == K_PRIMARY ? "PRIMARY KEY" : type.image)
+                    .withColumnsNames(columns);
+        }
+        |
+        constraint=ForeignKeySpec(null)
+        |
+        constraint=CheckConstraintSpec(null)
+    )
+    [ <K_CONSTRAINT> name=RelObjectName() { constraint.setName(name); } ]
+    {
+        constraint.setUseConstraintKeyword(true);
+        constraint.setConstraintNamePosition(NamedConstraint.ConstraintNamePosition.AFTER);
+        return constraint;
+    }
+}
+
 /**
  * Parses ADD/ALTER CONSTRAINT clause within AlterExpression.
  * Handles: CONSTRAINT [UNIQUE [KEY|INDEX]] name columns
@@ -14651,6 +14901,15 @@ AlterExpression AlterExpressionAddAlterModify():
         tk=<K_INDEX> sk3=RelObjectName() IndexOptionList(indexSpec) {
             index = new Index().withIndexKeyword(tk.image).withName(sk3)
                     .withKind(Index.Kind.INDEX).withIndexSpec(indexSpec);
+            alterExp.setIndex(index);
+        }
+        |
+        LOOKAHEAD(<K_CONSTRAINT> (<K_PRIMARY> <K_KEY> | <K_FOREIGN> <K_KEY>
+                | <K_UNIQUE> | <K_CHECK>) "(",
+                { Dialect.INFORMIX.name().equals(getAsString(Feature.dialect)) })
+        index=InformixConstraint() {
+            requireDdlSyntax(alterExp.getOperation() == AlterOperation.ADD,
+                    "Informix constraint definitions require ADD");
             alterExp.setIndex(index);
         }
         |
@@ -15082,6 +15341,11 @@ Statement Alter():
         (
             <K_ALTER>
             (
+                LOOKAHEAD({ isKeywordAhead("ROLE") || isKeywordAhead("USER") || isKeywordAhead("GROUP") })
+                statement = AlterRole()
+                |
+                statement = AlterDefaultPrivileges()
+                |
                 LOOKAHEAD(<K_TYPE>) statement = AlterType()
                 |
                 LOOKAHEAD(<K_DOMAIN>) statement = AlterDomain()
@@ -15391,41 +15655,371 @@ Comment Comment():
             <K_VIEW> view = Table() { result.setView(view); }
         )
     )
-    <K_IS> comment=<S_CHAR_LITERAL>
+    <K_IS>
+    (
+        comment=<S_CHAR_LITERAL> { result.setComment(new StringValue(comment.image)); }
+        | <K_NULL>
+    )
     {
-        result.setComment(new StringValue(comment.image));
         return result;
     }
 }
 
-Grant Grant():
+void AccessKeyword(String expected):
+{ Token token; }
+{ (token=<S_IDENTIFIER> | token=<DATA_TYPE>) { requireAccessSyntax(expected.equalsIgnoreCase(token.image), "Expected " + expected); } }
+
+String AccessQualifiedName():
+{ String name; String part; }
+{ name=RelObjectName() ( "." part=RelObjectNameExt() { name += "." + part; } )* { return name; } }
+
+List<String> AccessNames():
+{ List<String> names = new ArrayList<String>(); String name; }
+{ name=RelObjectName() { names.add(name); } ( "," name=RelObjectName() { names.add(name); } )* { return names; } }
+
+RoleOption RoleOption(boolean create):
+{ RoleOption option = null; Token token; Token value; String sign = ""; Expression expression; List<String> names; boolean encrypted = false; }
 {
-	Grant grant = new Grant();
-	ArrayList<String> privileges = new ArrayList<String>();
-	List<String> users;
-	Token tk = null;
-    ObjectNames objName;
+    (
+        LOOKAHEAD({ isAccessKeywordAhead("CONNECTION") })
+        AccessKeyword("CONNECTION") <K_LIMIT> [ ( "+" | "-" { sign = "-"; } ) ] value=<S_LONG>
+        { option = new RoleOption(RoleOption.Kind.CONNECTION_LIMIT); option.setValue(new LongValue(sign + value.image)); }
+        |
+        LOOKAHEAD({ isAccessKeywordAhead("PASSWORD") || isAccessKeywordAhead("ENCRYPTED") })
+        [ AccessKeyword("ENCRYPTED") { encrypted = true; } ] <K_PASSWORD>
+        ( value=<S_CHAR_LITERAL> { expression = new StringValue(value.image); } | <K_NULL> { expression = new NullValue(); } )
+        { option = new RoleOption(RoleOption.Kind.PASSWORD); option.setEncrypted(encrypted); option.setValue(expression); }
+        |
+        LOOKAHEAD({ isAccessKeywordAhead("VALID") })
+        AccessKeyword("VALID") AccessKeyword("UNTIL") value=<S_CHAR_LITERAL>
+        { option = new RoleOption(RoleOption.Kind.VALID_UNTIL); option.setValue(new StringValue(value.image)); }
+        |
+        <K_IN>
+        ( AccessKeyword("ROLE") { option = new RoleOption(RoleOption.Kind.IN_ROLE); }
+          | <K_GROUP> { option = new RoleOption(RoleOption.Kind.IN_GROUP); } )
+        names=AccessNames()
+        { requireAccessSyntax(create, "Membership attributes require CREATE ROLE"); option.setRoles(names); }
+        |
+        LOOKAHEAD({ isAccessKeywordAhead("ROLE") || isAccessKeywordAhead("USER") || isAccessKeywordAhead("ADMIN") })
+        ( token=<S_IDENTIFIER> | token=<K_USER> )
+        names=AccessNames()
+        { requireAccessSyntax(create, "Membership attributes require CREATE ROLE"); option = new RoleOption(accessEnum(RoleOption.Kind.class, token.image)); option.setRoles(names); }
+        |
+        LOOKAHEAD({ isAccessKeywordAhead("SYSID") })
+        AccessKeyword("SYSID") value=<S_LONG>
+        { requireAccessSyntax(create, "SYSID requires CREATE ROLE"); option = new RoleOption(RoleOption.Kind.SYSID); option.setValue(new LongValue(value.image)); }
+        |
+        token=<S_IDENTIFIER> { option = new RoleOption(accessEnum(RoleOption.Kind.class, token.image)); }
+    )
+    { return option; }
+}
+
+CreateRole CreateRole():
+{ CreateRole role = new CreateRole(); String name; RoleOption option; Token token; }
+{
+    ( token=<S_IDENTIFIER> | token=<K_USER> | token=<K_GROUP> ) { role.setCommand(accessEnum(CreateRole.Command.class, token.image)); }
+    name=RelObjectName() { role.setName(name); }
+    [ LOOKAHEAD(1) <K_WITH> { role.setUseWith(true); } ]
+    ( LOOKAHEAD({ isRoleOptionAhead(1) }) option=RoleOption(true) { role.getOptions().add(option); } )*
+    { requireAccessSyntax(!role.isUseWith() || !role.getOptions().isEmpty(), "WITH requires role attributes"); return role; }
+}
+
+AlterRole AlterRole():
+{
+    AlterRole role = new AlterRole(); String name; RoleOption option; Token token; Expression value;
+    ExpressionList<Expression> values = new ExpressionList<Expression>(); List<String> names;
 }
 {
-	<K_GRANT>
-	(
-	    (
-            [readGrantTypes(privileges) (<K_COMMA> readGrantTypes(privileges))*]
-            <K_ON> objName=RelObjectNames()   { grant.setObjectName(objName.getNames()); }
+    ( token=<S_IDENTIFIER> | token=<K_USER> | token=<K_GROUP> ) { role.setCommand(accessEnum(CreateRole.Command.class, token.image)); }
+    ( LOOKAHEAD(1) <K_ALL> { role.setName("ALL"); } | name=RelObjectName() { role.setName(name); } )
+    [ LOOKAHEAD(2) <K_IN> <K_DATABASE> name=RelObjectName() { role.setDatabase(name); } ]
+    (
+        <K_RENAME> <K_TO> name=RelObjectName() { role.setAction(AlterRole.Action.RENAME); role.setNewName(name); }
+        |
+        ( <K_ADD> { role.setAction(AlterRole.Action.ADD_USER); } | <K_DROP> { role.setAction(AlterRole.Action.DROP_USER); } )
+        <K_USER> names=AccessNames() { requireAccessSyntax(role.getCommand() == CreateRole.Command.GROUP, "ADD/DROP USER requires ALTER GROUP"); role.setUsers(names); }
+        |
+        <K_SET> name=AccessQualifiedName() { role.setAction(AlterRole.Action.SET); role.setParameter(name); }
+        (
+            <K_FROM> <K_CURRENT> { role.setFromCurrent(true); }
+            |
+            ( <K_TO> | "=" { role.setUseEquals(true); } )
+            (
+                LOOKAHEAD(1) <K_DEFAULT> { role.setUseDefault(true); }
+                |
+                value=AccessSettingValue() { values.add(value); }
+                ( "," value=AccessSettingValue() { values.add(value); } )*
+                { role.setValues(values); }
+            )
         )
         |
-        (
-            tk=<S_IDENTIFIER> { grant.setRole(tk.image); }
-        )
+        <K_RESET> ( LOOKAHEAD(1) <K_ALL> { role.setParameter("ALL"); } | name=AccessQualifiedName() { role.setParameter(name); } )
+        { role.setAction(AlterRole.Action.RESET); }
+        |
+        [ <K_WITH> { role.setUseWith(true); } ]
+        option=RoleOption(false) { role.getOptions().add(option); role.setAction(AlterRole.Action.OPTIONS); }
+        ( LOOKAHEAD({ isRoleOptionAhead(1) }) option=RoleOption(false) { role.getOptions().add(option); } )*
     )
-	<K_TO> users = UsersList()
-	{
-        grant.setUsers(users);
-        if(privileges.size() > 0) {
-            grant.setPrivileges(privileges);
-        }
-	    return grant;
+    {
+        requireAccessSyntax(role.getDatabase() == null && !"ALL".equals(role.getName())
+            || role.getAction() == AlterRole.Action.SET || role.getAction() == AlterRole.Action.RESET,
+            "ALL and IN DATABASE require SET or RESET");
+        requireAccessSyntax(role.getCommand() != CreateRole.Command.GROUP || role.getAction() == AlterRole.Action.RENAME
+            || role.getAction() == AlterRole.Action.ADD_USER || role.getAction() == AlterRole.Action.DROP_USER, "Invalid ALTER GROUP action");
+        return role;
     }
+}
+
+Expression AccessSettingValue():
+{ Expression value; Token token; }
+{ ( LOOKAHEAD(1) token=<K_ON> { value = new Column(token.image); } | value=PrimaryExpression() ) { return value; } }
+
+Privilege AccessPrivilege():
+{ Privilege result; Token token; boolean all = false; String column; ExpressionList<Column> columns = null; }
+{
+    ( token=<K_SELECT> | token=<K_ALL> | token=<S_IDENTIFIER> | token=<K_INSERT> | token=<K_UPDATE> | token=<K_DELETE> | token=<K_TRUNCATE> | token=<K_REFERENCES> | token=<K_TRIGGER> | token=<K_CREATE> | token=<K_CONNECT> | token=<K_TEMPORARY> | token=<K_TEMP> | token=<K_EXECUTE> | token=<K_SET> | token=<K_ALTER> | token=<K_DROP> )
+    { result = new Privilege(accessEnum(Privilege.Kind.class, token.image)); }
+    [ <K_SYSTEM> { requireAccessSyntax(result.getKind() == Privilege.Kind.ALTER, "SYSTEM requires ALTER"); result.setKind(Privilege.Kind.ALTER_SYSTEM); } ]
+    [ LOOKAHEAD({ isAccessKeywordAhead("PRIVILEGES") })
+      AccessKeyword("PRIVILEGES") { requireAccessSyntax(result.getKind() == Privilege.Kind.ALL, "PRIVILEGES requires ALL"); result.setUsePrivileges(true); } ]
+    [ "(" { columns = new ExpressionList<Column>(); }
+      column=RelObjectName() { columns.add(new Column(column)); }
+      ( "," column=RelObjectName() { columns.add(new Column(column)); } )*
+      ")" { result.setColumns(columns); } ]
+    { return result; }
+}
+
+PrivilegeTarget.Kind AccessObjectKind(boolean plural):
+{ Token token; String name; }
+{
+    (
+        <K_FOREIGN>
+        ( <K_DATA> AccessKeyword("WRAPPER") { name = "FOREIGN_DATA_WRAPPER"; }
+          | AccessKeyword("SERVER") { name = "FOREIGN_SERVER"; } )
+        |
+        LOOKAHEAD({ isAccessKeywordAhead("LARGE") })
+        AccessKeyword("LARGE") ( token=<S_IDENTIFIER> ) { name = "LARGE_" + token.image.toUpperCase(Locale.ROOT); }
+        |
+        ( token=<K_TABLE> | token=<K_TABLES> | token=<K_SEQUENCE> | token=<K_DATABASE> | token=<K_DOMAIN> | token=<K_FUNCTION> | token=<K_PROCEDURE> | token=<S_IDENTIFIER> | token=<K_SCHEMA> | token=<K_TABLESPACE> | token=<K_TYPE> )
+        { name = token.image.toUpperCase(Locale.ROOT); }
+    )
+    {
+        if (plural) {
+            requireAccessSyntax(name.endsWith("S"), "Expected plural privilege target");
+            name = name.substring(0, name.length() - 1);
+        }
+        return accessEnum(PrivilegeTarget.Kind.class, name);
+    }
+}
+
+RoutineReference.Argument AccessRoutineArgument():
+{ RoutineReference.Argument result = new RoutineReference.Argument(); String name; Token mode; ColDataType type; }
+{
+    [
+        LOOKAHEAD({ isAccessKeywordAhead("IN") || isAccessKeywordAhead("OUT") || isAccessKeywordAhead("INOUT") || isAccessKeywordAhead("VARIADIC") })
+        ( <K_IN> { result.setMode(RoutineReference.Argument.Mode.IN); }
+          | mode=<S_IDENTIFIER> { result.setMode(accessEnum(RoutineReference.Argument.Mode.class, mode.image)); } )
+    ]
+    (
+        LOOKAHEAD(ColDataType() ("," | ")")) type=ColDataType()
+        | name=RelObjectName() { result.setName(name); } type=ColDataType()
+    )
+    { result.setDataType(type); return result; }
+}
+
+RoutineReference AccessRoutine():
+{ RoutineReference result = new RoutineReference(); String name; RoutineReference.Argument argument; List<RoutineReference.Argument> arguments; }
+{
+    name=AccessQualifiedName() { result.setName(name); }
+    [ LOOKAHEAD(1) "(" { arguments = new ArrayList<RoutineReference.Argument>(); result.setArguments(arguments); }
+      [ argument=AccessRoutineArgument() { arguments.add(argument); }
+        ( "," argument=AccessRoutineArgument() { arguments.add(argument); } )* ] ")" ]
+    { return result; }
+}
+
+PrivilegeTarget AccessTarget(boolean defaults):
+{ PrivilegeTarget target = new PrivilegeTarget(); PrivilegeTarget.Kind kind; ObjectNames name; RoutineReference routine; Token number; }
+{
+    (
+        LOOKAHEAD({ defaults })
+        kind=AccessObjectKind(true)
+        { requireAccessSyntax(defaults && EnumSet.of(PrivilegeTarget.Kind.TABLE, PrivilegeTarget.Kind.SEQUENCE, PrivilegeTarget.Kind.FUNCTION,
+              PrivilegeTarget.Kind.ROUTINE, PrivilegeTarget.Kind.TYPE, PrivilegeTarget.Kind.SCHEMA, PrivilegeTarget.Kind.LARGE_OBJECT).contains(kind),
+              "Invalid default-privilege target");
+          target.setKind(kind); target.setDefaultPrivileges(true); }
+        |
+        LOOKAHEAD(1) <K_ALL> kind=AccessObjectKind(true) <K_IN> <K_SCHEMA>
+        { requireAccessSyntax(!defaults && EnumSet.of(PrivilegeTarget.Kind.TABLE, PrivilegeTarget.Kind.SEQUENCE,
+              PrivilegeTarget.Kind.FUNCTION, PrivilegeTarget.Kind.PROCEDURE, PrivilegeTarget.Kind.ROUTINE).contains(kind),
+              "Invalid ALL IN SCHEMA target"); target.setKind(kind); target.setAllInSchema(true); }
+        name=RelObjectNames() { target.getNames().add(name.getNames()); }
+        ( "," name=RelObjectNames() { target.getNames().add(name.getNames()); } )*
+        |
+        LOOKAHEAD({ isAccessTargetKindAhead() && (isAccessKeywordAhead("FUNCTION") || isAccessKeywordAhead("PROCEDURE") || isAccessKeywordAhead("ROUTINE")) })
+        kind=AccessObjectKind(false) { target.setKind(kind); target.setExplicitKind(true); }
+        routine=AccessRoutine() { target.getRoutines().add(routine); }
+        ( "," routine=AccessRoutine() { target.getRoutines().add(routine); } )*
+        |
+        LOOKAHEAD({ isAccessTargetKindAhead() && isAccessKeywordAhead("LARGE") })
+        kind=AccessObjectKind(false) { target.setKind(kind); target.setExplicitKind(true); }
+        number=<S_LONG> { target.getNames().add(Collections.singletonList(number.image)); }
+        ( "," number=<S_LONG> { target.getNames().add(Collections.singletonList(number.image)); } )*
+        |
+        [ LOOKAHEAD({ isAccessTargetKindAhead() }) kind=AccessObjectKind(false) { target.setKind(kind); target.setExplicitKind(true); } ]
+        name=RelObjectNames() { target.getNames().add(name.getNames()); }
+        ( "," name=RelObjectNames() { target.getNames().add(name.getNames()); } )*
+    )
+    { requireAccessSyntax(target.isDefaultPrivileges() == defaults, "Invalid default-privilege target"); return target; }
+}
+
+String AccessGrantee():
+{ String name; boolean group = false; }
+{ [ LOOKAHEAD(1) <K_GROUP> { group = true; } ] name=RelObjectName() { return (group ? "GROUP " : "") + name; } }
+
+List<String> AccessGrantees():
+{ List<String> names = new ArrayList<String>(); String name; }
+{ name=AccessGrantee() { names.add(name); } ( "," name=AccessGrantee() { names.add(name); } )* { return names; } }
+
+PrivilegeClause AccessClause(boolean revoke, boolean defaults):
+{ PrivilegeClause clause = new PrivilegeClause(); Privilege privilege; PrivilegeTarget target; List<String> names; }
+{
+    (
+        LOOKAHEAD({ isObjectPrivilegeAhead() })
+        { clause.setPrivileges(new ArrayList<Privilege>()); }
+        privilege=AccessPrivilege() { clause.getPrivileges().add(privilege); }
+        ( "," privilege=AccessPrivilege() { clause.getPrivileges().add(privilege); } )*
+        <K_ON> target=AccessTarget(defaults) { clause.setTarget(target); }
+        |
+        names=AccessNames() { clause.setRoles(names); }
+    )
+    ( <K_TO> { requireAccessSyntax(!revoke, "REVOKE requires FROM"); } | <K_FROM> { requireAccessSyntax(revoke, "GRANT requires TO"); } )
+    names=AccessGrantees() { clause.setGrantees(names); return clause; }
+}
+
+Grant Grant():
+{ Grant grant; }
+{ grant=AccessGrant(false) { return grant; } }
+
+Grant AccessGrant(boolean defaults):
+{ Grant grant = new Grant(); PrivilegeClause clause; Token token; GrantOption option; String name; }
+{
+    <K_GRANT> clause=AccessClause(false, defaults) { grant.setClause(clause); }
+    [ LOOKAHEAD(1)
+        <K_WITH> ( token=<K_GRANT> | token=<S_IDENTIFIER> | token=<K_SET> ) { option = new GrantOption(accessEnum(GrantOption.Kind.class, token.image)); }
+        ( token=<K_OPTION> | token=<K_TRUE> | token=<K_FALSE> )
+        { option.setValue(accessEnum(GrantOption.Value.class, token.image)); grant.setOption(option);
+          requireAccessSyntax(clause.getPrivileges() == null ? option.getKind() != GrantOption.Kind.GRANT
+              : option.getKind() == GrantOption.Kind.GRANT && option.getValue() == GrantOption.Value.OPTION, "Invalid GRANT option"); }
+    ]
+    [ LOOKAHEAD({ isAccessKeywordAhead("GRANTED") }) AccessKeyword("GRANTED") <K_BY> name=RelObjectName()
+      { requireAccessSyntax(!defaults, "GRANTED BY is not part of default privileges"); clause.setGrantedBy(name); } ]
+    { return grant; }
+}
+
+Revoke Revoke(boolean defaults):
+{ Revoke revoke = new Revoke(); PrivilegeClause clause; Token token; String name; }
+{
+    <K_REVOKE>
+    [ LOOKAHEAD(3) ( token=<K_GRANT> | token=<S_IDENTIFIER> | token=<K_SET> ) <K_OPTION> <K_FOR>
+      { revoke.setOptionFor(accessEnum(GrantOption.Kind.class, token.image)); } ]
+    clause=AccessClause(true, defaults) { revoke.setClause(clause); }
+    [ LOOKAHEAD({ isAccessKeywordAhead("GRANTED") }) AccessKeyword("GRANTED") <K_BY> name=RelObjectName()
+      { requireAccessSyntax(!defaults, "GRANTED BY is not part of default privileges"); clause.setGrantedBy(name); } ]
+    [ ( <K_CASCADE> { revoke.setBehavior(Revoke.Behavior.CASCADE); } | <K_RESTRICT> { revoke.setBehavior(Revoke.Behavior.RESTRICT); } ) ]
+    { requireAccessSyntax(revoke.getOptionFor() == null || (clause.getPrivileges() == null
+        ? revoke.getOptionFor() != GrantOption.Kind.GRANT : revoke.getOptionFor() == GrantOption.Kind.GRANT), "Invalid REVOKE option");
+      return revoke; }
+}
+
+AlterDefaultPrivileges AlterDefaultPrivileges():
+{ AlterDefaultPrivileges result = new AlterDefaultPrivileges(); Token token; List<String> names; Grant grant; Revoke revoke; }
+{
+    <K_DEFAULT> AccessKeyword("PRIVILEGES")
+    [ <K_FOR> ( token=<S_IDENTIFIER> | token=<K_USER> ) { result.setRoleKeyword(accessEnum(AlterDefaultPrivileges.RoleKeyword.class, token.image)); }
+      names=AccessNames() { result.setRoles(names); } ]
+    [ <K_IN> <K_SCHEMA> names=AccessNames() { result.setSchemas(names); } ]
+    ( grant=AccessGrant(true) { result.setGrant(grant); }
+      | revoke=Revoke(true) { result.setRevoke(revoke); } )
+    { return result; }
+}
+
+TriggerEvent PostgreSqlTriggerEvent():
+{ TriggerEvent result = null; String name; ExpressionList<Column> columns; }
+{
+    (
+        <K_INSERT> { result = new TriggerEvent(CreateTrigger.Event.INSERT); }
+        | <K_DELETE> { result = new TriggerEvent(CreateTrigger.Event.DELETE); }
+        | <K_TRUNCATE> { result = new TriggerEvent(CreateTrigger.Event.TRUNCATE); }
+        | <K_UPDATE> { result = new TriggerEvent(CreateTrigger.Event.UPDATE); }
+          [ <K_OF> { columns = new ExpressionList<Column>(); }
+            name=RelObjectName() { columns.add(new Column(name)); }
+            ( "," name=RelObjectName() { columns.add(new Column(name)); } )*
+            { result.setColumns(columns); } ]
+    )
+    { return result; }
+}
+
+TransitionRelation PostgreSqlTransitionRelation():
+{ TransitionRelation result = new TransitionRelation(); Token token; String name; }
+{
+    ( token=<S_IDENTIFIER> ) { result.setImage(accessEnum(TransitionRelation.Image.class, token.image)); }
+    <K_TABLE> [ <K_AS> { result.setUseAs(true); } ] name=RelObjectName() { result.setName(name); return result; }
+}
+
+CreateTrigger PostgreSqlTrigger(boolean replace):
+{
+    CreateTrigger result = new CreateTrigger(); String name; Table table; CreateTrigger.Timing timing;
+    TriggerEvent event; TransitionRelation transition; Expression expression; Token token; boolean negative = false;
+    Function routine = new Function(); ExpressionList<Expression> arguments = new ExpressionList<Expression>();
+}
+{
+    [ <K_CONSTRAINT> { result.setConstraint(true); } ]
+    <K_TRIGGER> name=RelObjectName() { result.setTrigger(new Table(name)); result.setOrReplace(replace); }
+    (
+        LOOKAHEAD({ isAccessKeywordAhead("INSTEAD") }) AccessKeyword("INSTEAD") <K_OF> { result.setTiming(CreateTrigger.Timing.INSTEAD_OF); }
+        | timing=MySqlTriggerTiming() { result.setTiming(timing); }
+    )
+    event=PostgreSqlTriggerEvent() { result.getEvents().add(event); }
+    ( <K_OR> event=PostgreSqlTriggerEvent() { result.getEvents().add(event); } )*
+    <K_ON> table=Table() { result.setTable(table); }
+    [ <K_FROM> table=Table() { result.setReferencedTable(table); } ]
+    [ [ <K_NOT> { negative = true; } ] <K_DEFERRABLE> { result.getConstraintAttributes().setDeferrable(!negative); } ]
+    [ LOOKAHEAD({ isAccessKeywordAhead("INITIALLY") })
+      AccessKeyword("INITIALLY") ( token=<S_IDENTIFIER> )
+      { result.getConstraintAttributes().setInitially(accessEnum(ConstraintAttributes.Initially.class, token.image)); } ]
+    [ LOOKAHEAD({ isAccessKeywordAhead("REFERENCING") }) AccessKeyword("REFERENCING")
+      transition=PostgreSqlTransitionRelation() { result.getTransitionRelations().add(transition); }
+      ( LOOKAHEAD({ isAccessKeywordAhead("OLD") || isAccessKeywordAhead("NEW") })
+        transition=PostgreSqlTransitionRelation() { result.getTransitionRelations().add(transition); } )* ]
+    [ <K_FOR> [ LOOKAHEAD({ isAccessKeywordAhead("EACH") }) AccessKeyword("EACH") { result.setUseEach(true); } ]
+      ( <K_ROW> { result.setOrientation(CreateTrigger.Orientation.ROW); }
+        | <K_STATEMENT> { result.setOrientation(CreateTrigger.Orientation.STATEMENT); } ) ]
+    [ <K_WHEN> "(" expression=Expression() ")" { result.setWhenExpression(expression); } ]
+    <K_EXECUTE> ( <K_FUNCTION> | <K_PROCEDURE> { result.setExecuteKeyword(CreateTrigger.ExecuteKeyword.PROCEDURE); } )
+    name=AccessQualifiedName() { routine.setName(name); }
+    "(" [ expression=PostgreSqlTriggerArgument() { arguments.add(expression); }
+          ( "," expression=PostgreSqlTriggerArgument() { arguments.add(expression); } )* ] ")"
+    {
+        routine.setParameters(arguments); result.setRoutine(routine);
+        requireAccessSyntax(!result.isConstraint() || !replace && result.getTiming() == CreateTrigger.Timing.AFTER
+            && result.getOrientation() == CreateTrigger.Orientation.ROW, "A constraint trigger requires AFTER FOR EACH ROW without OR REPLACE");
+        requireAccessSyntax(result.isConstraint() || result.getReferencedTable() == null
+            && result.getConstraintAttributes().getDeferrable() == null && result.getConstraintAttributes().getInitially() == null,
+            "FROM and deferrability require a constraint trigger");
+        return result;
+    }
+}
+
+Expression PostgreSqlTriggerArgument():
+{ Expression result; Token token; String name; }
+{
+    (
+        token=<S_CHAR_LITERAL> { result = new StringValue(token.image); }
+        | token=<S_LONG> { result = new LongValue(token.image); }
+        | token=<S_DOUBLE> { result = new DoubleValue(token.image); }
+        | name=RelObjectName() { result = new Column(name); }
+    )
+    { return result; }
 }
 
 List<String> UsersList():
@@ -15582,6 +16176,11 @@ Statement Create():
 {
     <K_CREATE> [ <K_OR> <K_REPLACE> { isUsingOrReplace = true; } ]
     (
+        LOOKAHEAD({ isPostgreSqlRoleAhead() }) statement = CreateRole()
+        { requireAccessSyntax(!isUsingOrReplace, "CREATE ROLE does not accept OR REPLACE"); }
+        |
+        LOOKAHEAD({ isPostgreSqlTriggerAhead() }) statement = PostgreSqlTrigger(isUsingOrReplace)
+        |
         LOOKAHEAD(<K_TYPE>) { requireTypeDdlSyntax(!isUsingOrReplace, "OR REPLACE is not supported for CREATE TYPE"); } statement = CreateType()
         |
         LOOKAHEAD(<K_DOMAIN>) { requireTypeDdlSyntax(!isUsingOrReplace, "OR REPLACE is not supported for CREATE DOMAIN"); } statement = CreateDomain()
@@ -16291,7 +16890,7 @@ List<String> captureFunctionBody() {
         tokens.add(tok.image);
     }
     foundEnd |= (tok.kind == K_END)
-        || ( tok.image.trim().startsWith("$$") && tok.image.trim().endsWith("$$")) ;
+        || (tok.kind == S_CHAR_LITERAL && StringValue.getDollarQuoteDelimiter(tok.image) != null);
 
     tok = getNextToken();
   }

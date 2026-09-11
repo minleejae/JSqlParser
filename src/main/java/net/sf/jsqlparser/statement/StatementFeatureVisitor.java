@@ -9,6 +9,11 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.statement.role.CreateRole;
+import net.sf.jsqlparser.statement.role.AlterRole;
+import net.sf.jsqlparser.statement.grant.Revoke;
+import net.sf.jsqlparser.statement.grant.AlterDefaultPrivileges;
+import net.sf.jsqlparser.statement.create.trigger.CreateTrigger;
 import net.sf.jsqlparser.statement.create.type.CreateType;
 import net.sf.jsqlparser.statement.alter.AlterType;
 import net.sf.jsqlparser.statement.create.domain.CreateDomain;
@@ -22,6 +27,8 @@ import net.sf.jsqlparser.statement.create.subscription.SubscriptionOption;
 import net.sf.jsqlparser.statement.alter.AlterSubscription;
 
 import net.sf.jsqlparser.JSQLParserException;
+import net.sf.jsqlparser.expression.AnalyticExpression;
+import net.sf.jsqlparser.expression.TranscodingFunction;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
@@ -824,21 +831,31 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
             this.analysis = analysis;
         }
 
-        /**
-         * Volatility is not a syntactic property. Everything the caller has not proven pure stays
-         * in the <em>possible</em> set, with the name recorded so it can be resolved against a
-         * catalogue rather than guessed at here.
-         */
-        @Override
-        public <S> Void visit(Function function, S context) {
-            String name = function.getName() == null
-                    ? "?"
-                    : function.getName().toLowerCase(Locale.ROOT);
+        /** Records unproven functions consistently across their different expression models. */
+        private void analyseFunction(String functionName) {
+            String name = functionName == null ? "?" : functionName.toLowerCase(Locale.ROOT);
             if (!analysis.pureFunctions.test(name)) {
                 analysis.possible(StmtFeature.MODIFIES_DATA, StmtFeature.MODIFIES_SCHEMA);
                 analysis.unresolved(name);
             }
+        }
+
+        @Override
+        public <S> Void visit(Function function, S context) {
+            analyseFunction(function.getName());
             return super.visit(function, context);
+        }
+
+        @Override
+        public <S> Void visit(AnalyticExpression expression, S context) {
+            analyseFunction(expression.getName());
+            return super.visit(expression, context);
+        }
+
+        @Override
+        public <S> Void visit(TranscodingFunction expression, S context) {
+            analyseFunction(expression.getKeyword());
+            return super.visit(expression, context);
         }
     }
 
@@ -857,6 +874,31 @@ public class StatementFeatureVisitor extends StatementVisitorAdapter<Void> {
             }
             return super.visit(tableFunction, context);
         }
+    }
+
+    @Override
+    public <S> Void visit(CreateRole statement, S context) {
+        return schemaOnly();
+    }
+
+    @Override
+    public <S> Void visit(AlterRole statement, S context) {
+        return schemaOnly();
+    }
+
+    @Override
+    public <S> Void visit(Revoke statement, S context) {
+        return schemaOnly();
+    }
+
+    @Override
+    public <S> Void visit(AlterDefaultPrivileges statement, S context) {
+        return schemaOnly();
+    }
+
+    @Override
+    public <S> Void visit(CreateTrigger statement, S context) {
+        return schemaOnly();
     }
 
     @Override

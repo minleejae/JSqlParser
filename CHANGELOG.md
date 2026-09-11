@@ -2,29 +2,6 @@
 
 Changelog of JSqlParser.
 
-## jsqlparser-5.4 (2025-05-25)
-
-### Features
-
--  Session Statement ([7d2e6](https://github.com/JSQLParser/JSqlParser/commit/7d2e6b65324ce57) manticore-projects)
--  sync with Master ([e14d7](https://github.com/JSQLParser/JSqlParser/commit/e14d7eb1c4e9963) manticore-projects)
--  JavaCC 8 keyword utils ([cfe2d](https://github.com/JSQLParser/JSqlParser/commit/cfe2d8ccaf7c76d) manticore-projects)
--  Complete on JavaCC-8 ([1b7ed](https://github.com/JSQLParser/JSqlParser/commit/1b7ed2d7be000ce) manticore-projects)
--  Optimise performance ([e91c4](https://github.com/JSQLParser/JSqlParser/commit/e91c480b0bbe0a9) manticore-projects)
--  avoid looping through the tokens every single time ([b18fb](https://github.com/JSQLParser/JSqlParser/commit/b18fbca1f48e63e) manticore-projects)
--  avoid looping through the tokens every single time ([7ac6c](https://github.com/JSQLParser/JSqlParser/commit/7ac6cd0fa08d713) manticore-projects)
--  add proper JMH benchmarks ([21c98](https://github.com/JSQLParser/JSqlParser/commit/21c983fc1f4f3f2) manticore-projects)
--  JavaCC-8 ([9d144](https://github.com/JSQLParser/JSqlParser/commit/9d1442e9a4800e2) manticore-projects)
--  remove all semantic lookaheads ([5abca](https://github.com/JSQLParser/JSqlParser/commit/5abcaeaede27cfe) manticore-projects)
-
-### Bug Fixes
-
--  bring back `SYNTACTIC LOOKAHEAD` where it makes sense ([b3c5b](https://github.com/JSQLParser/JSqlParser/commit/b3c5b63344de193) manticore-projects)
--  the Quotes Token manipulation ([bad81](https://github.com/JSQLParser/JSqlParser/commit/bad818e0b872c6a) manticore-projects)
-
-### Other changes
-
-
 ## jsqlparser-5.3 (2025-05-17)
 
 ### Features

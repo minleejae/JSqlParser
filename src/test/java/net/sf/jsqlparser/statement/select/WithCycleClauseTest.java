@@ -13,11 +13,15 @@ import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
 import net.sf.jsqlparser.expression.StringValue;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
+import net.sf.jsqlparser.parser.feature.Feature;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.test.TestUtils;
 import net.sf.jsqlparser.util.deparser.ExpressionDeParser;
 import net.sf.jsqlparser.util.deparser.SelectDeParser;
 import net.sf.jsqlparser.util.deparser.StatementDeParser;
+import net.sf.jsqlparser.util.validation.Validation;
+import net.sf.jsqlparser.util.validation.ValidationError;
+import net.sf.jsqlparser.util.validation.feature.FeaturesAllowed;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -92,6 +96,22 @@ class WithCycleClauseTest {
             }
         }), null);
         assertEquals(List.of("Y", "N"), values);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"TO upper('Y') DEFAULT 'N'", "TO 'Y' DEFAULT lower('N')"})
+    void validatesCycleMarkExpressionsAlongsideTheCteBody(String markValues) {
+        String sql = CTE + "CYCLE id SET flag " + markValues + " USING path SELECT * FROM walk";
+        assertTrue(
+                Validation.validate(List.of(new FeaturesAllowed(Feature.values())), sql).isEmpty());
+
+        FeaturesAllowed allowed = new FeaturesAllowed(Feature.values()).remove(Feature.function);
+        List<ValidationError> errors = Validation.validate(List.of(allowed), sql);
+        assertEquals(1, errors.size());
+        assertNotNull(errors.get(0).getParsedStatement());
+        assertEquals(1, errors.get(0).getErrors().size());
+        assertEquals("function not allowed.",
+                errors.get(0).getErrors().iterator().next().getMessage());
     }
 
     @Test

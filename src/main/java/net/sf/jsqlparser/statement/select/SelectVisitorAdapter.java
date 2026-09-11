@@ -9,9 +9,12 @@
  */
 package net.sf.jsqlparser.statement.select;
 
+import java.util.List;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
 import net.sf.jsqlparser.expression.Function;
+import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.WindowDefinition;
 import net.sf.jsqlparser.statement.OutputClause;
 import net.sf.jsqlparser.statement.ParenthesedStatement;
 import net.sf.jsqlparser.statement.Statement;
@@ -67,11 +70,7 @@ public class SelectVisitorAdapter<T> implements SelectVisitor<T> {
     @Override
     public <S> T visitOutputClause(OutputClause outputClause, S context) {
         if (outputClause != null) {
-            if (outputClause.getSelectItemList() != null) {
-                for (SelectItem<?> selectItem : outputClause.getSelectItemList()) {
-                    selectItem.accept(selectItemVisitor, context);
-                }
-            }
+            visitSelectItems(outputClause.getSelectItemList(), context);
             if (outputClause.getTableVariable() != null) {
                 outputClause.getTableVariable().accept(expressionVisitor, context);
             }
@@ -84,6 +83,14 @@ public class SelectVisitorAdapter<T> implements SelectVisitor<T> {
             // }
         }
         return null;
+    }
+
+    private <S> void visitSelectItems(List<SelectItem<?>> items, S context) {
+        if (items != null) {
+            for (SelectItem<?> item : items) {
+                item.accept(selectItemVisitor, context);
+            }
+        }
     }
 
     public ExpressionVisitor<T> getExpressionVisitor() {
@@ -146,18 +153,14 @@ public class SelectVisitorAdapter<T> implements SelectVisitor<T> {
         visitWithItems(plainSelect.withItemsList, context);
 
         if (plainSelect.getDistinct() != null) {
-            for (SelectItem<?> selectItem : plainSelect.getDistinct().getOnSelectItems()) {
-                selectItem.accept(selectItemVisitor, context);
-            }
+            visitSelectItems(plainSelect.getDistinct().getOnSelectItems(), context);
         }
 
         if (plainSelect.getTop() != null) {
             plainSelect.getTop().getExpression().accept(expressionVisitor, context);
         }
 
-        for (SelectItem<?> selectItem : plainSelect.getSelectItems()) {
-            selectItem.accept(selectItemVisitor, context);
-        }
+        visitSelectItems(plainSelect.getSelectItems(), context);
 
         if (plainSelect.getMySqlSelectIntoClause() != null) {
             MySqlSelectIntoClause mySqlSelectIntoClause = plainSelect.getMySqlSelectIntoClause();
@@ -197,9 +200,13 @@ public class SelectVisitorAdapter<T> implements SelectVisitor<T> {
         expressionVisitor.visitExpression(plainSelect.getHaving(), context);
         expressionVisitor.visitExpression(plainSelect.getQualify(), context);
 
-        // if (plainSelect.getWindowDefinitions() != null) {
-        // //@todo: implement
-        // }
+        if (plainSelect.getWindowDefinitions() != null) {
+            for (WindowDefinition window : plainSelect.getWindowDefinitions()) {
+                for (Expression expression : window.getAllExpressions()) {
+                    expressionVisitor.visitExpression(expression, context);
+                }
+            }
+        }
 
         Pivot pivot = plainSelect.getPivot();
         if (pivot != null) {

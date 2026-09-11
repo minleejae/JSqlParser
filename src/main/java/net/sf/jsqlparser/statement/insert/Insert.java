@@ -40,7 +40,12 @@ public class Insert implements Statement {
     private List<Partition> partitions;
     private Select select;
     private boolean onlyDefaultValues = false;
-    private boolean overriding = false;
+
+    public enum OverridingMode {
+        NONE, SYSTEM, USER
+    }
+
+    private OverridingMode overridingMode = OverridingMode.NONE;
     private List<UpdateSet> duplicateUpdateSets = null;
     private InsertModifierPriority modifierPriority = null;
     private boolean modifierIgnore = false;
@@ -226,12 +231,25 @@ public class Insert implements Statement {
         this.withItemsList = withItemsList;
     }
 
+    public OverridingMode getOverridingMode() {
+        return overridingMode;
+    }
+
+    public void setOverridingMode(OverridingMode overridingMode) {
+        this.overridingMode = java.util.Objects.requireNonNull(overridingMode);
+    }
+
+    public Insert withOverridingMode(OverridingMode overridingMode) {
+        setOverridingMode(overridingMode);
+        return this;
+    }
+
     public boolean isOverriding() {
-        return overriding;
+        return overridingMode != OverridingMode.NONE;
     }
 
     public void setOverriding(boolean overriding) {
-        this.overriding = overriding;
+        this.overridingMode = overriding ? OverridingMode.SYSTEM : OverridingMode.NONE;
     }
 
     public Insert withOverriding(boolean overriding) {
@@ -388,8 +406,8 @@ public class Insert implements Statement {
             sql.append(") ");
         }
 
-        if (overriding) {
-            sql.append("OVERRIDING SYSTEM VALUE ");
+        if (isOverriding()) {
+            sql.append("OVERRIDING ").append(overridingMode).append(" VALUE ");
         }
 
         if (partitions != null) {

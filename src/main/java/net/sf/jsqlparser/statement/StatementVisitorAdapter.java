@@ -9,6 +9,11 @@
  */
 package net.sf.jsqlparser.statement;
 
+import net.sf.jsqlparser.statement.role.CreateRole;
+import net.sf.jsqlparser.statement.role.AlterRole;
+import net.sf.jsqlparser.statement.role.RoleOption;
+import net.sf.jsqlparser.statement.grant.Revoke;
+import net.sf.jsqlparser.statement.grant.AlterDefaultPrivileges;
 import net.sf.jsqlparser.statement.create.type.CreateType;
 import net.sf.jsqlparser.statement.alter.AlterType;
 import net.sf.jsqlparser.statement.create.domain.CreateDomain;
@@ -291,6 +296,9 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
             expressionVisitor.visitUpdateSets(conflictAction.getUpdateSets(), context);
         }
 
+        if (insert.getConflictTarget() != null) {
+            insert.getConflictTarget().accept(expressionVisitor, context);
+        }
         visitReturningClause(insert.getReturningClause(), context);
         return null;
     }
@@ -363,6 +371,11 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
 
     @Override
     public <S> T visit(CreateTrigger createTrigger, S context) {
+        createTrigger.visit(t -> t.accept(fromItemVisitor, context),
+                e -> e.accept(expressionVisitor, context));
+        if (createTrigger.getBody() != null) {
+            createTrigger.getBody().accept(this, context);
+        }
         return null;
     }
 
@@ -447,6 +460,7 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
         expressionVisitor.visitExpression(merge.getOnCondition(), context);
         mergeOperationVisitor.visit(merge.getOperations(), context);
         selectVisitor.visitOutputClause(merge.getOutputClause(), context);
+        visitReturningClause(merge.getReturningClause(), context);
         return null;
     }
 
@@ -507,6 +521,8 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
 
     @Override
     public <S> T visit(Grant grant, S context) {
+        grant.getClause().visit(t -> t.accept(fromItemVisitor, context),
+                e -> e.accept(expressionVisitor, context));
         return null;
     }
 
@@ -606,6 +622,47 @@ public class StatementVisitorAdapter<T> implements StatementVisitor<T> {
 
     @Override
     public <S> T visit(Export export, S context) {
+        return null;
+    }
+
+    @Override
+    public <S> T visit(CreateRole statement, S context) {
+        for (RoleOption option : statement.getOptions()) {
+            if (option.getValue() != null) {
+                option.getValue().accept(expressionVisitor, context);
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public <S> T visit(AlterRole statement, S context) {
+        for (RoleOption option : statement.getOptions()) {
+            if (option.getValue() != null) {
+                option.getValue().accept(expressionVisitor, context);
+            }
+        }
+        if (statement.getValues() != null) {
+            statement.getValues().forEach(e -> e.accept(expressionVisitor, context));
+        }
+        return null;
+    }
+
+    @Override
+    public <S> T visit(Revoke statement, S context) {
+        statement.getClause().visit(t -> t.accept(fromItemVisitor, context),
+                e -> e.accept(expressionVisitor, context));
+        return null;
+    }
+
+    @Override
+    public <S> T visit(AlterDefaultPrivileges statement, S context) {
+        if (statement.getGrant() != null) {
+            statement.getGrant().accept(this, context);
+        }
+        if (statement.getRevoke() != null) {
+            statement.getRevoke().accept(this, context);
+        }
         return null;
     }
 

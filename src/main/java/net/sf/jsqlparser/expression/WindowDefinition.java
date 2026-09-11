@@ -10,6 +10,7 @@
 package net.sf.jsqlparser.expression;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.List;
 
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
@@ -71,6 +72,30 @@ public class WindowDefinition implements Serializable {
     public WindowDefinition withWindowName(String windowName) {
         setWindowName(windowName);
         return this;
+    }
+
+    /** Returns the partition, order and frame expressions for both inline and named windows. */
+    public List<Expression> getAllExpressions() {
+        List<Expression> expressions = new ArrayList<>(partitionBy);
+        if (getOrderByElements() != null) {
+            for (OrderByElement element : getOrderByElements()) {
+                expressions.add(element.getExpression());
+            }
+        }
+        if (windowElement != null) {
+            if (windowElement.getRange() != null) {
+                addOffsetExpression(expressions, windowElement.getRange().getStart());
+                addOffsetExpression(expressions, windowElement.getRange().getEnd());
+            }
+            addOffsetExpression(expressions, windowElement.getOffset());
+        }
+        return expressions;
+    }
+
+    private static void addOffsetExpression(List<Expression> expressions, WindowOffset offset) {
+        if (offset != null && offset.getExpression() != null) {
+            expressions.add(offset.getExpression());
+        }
     }
 
     @Override

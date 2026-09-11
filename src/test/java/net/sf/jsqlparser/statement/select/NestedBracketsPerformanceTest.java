@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import java.util.logging.Logger;
+import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
 
 import static net.sf.jsqlparser.test.TestUtils.assertSqlCanBeParsedAndDeparsed;
 import org.junit.jupiter.api.Assertions;
@@ -139,22 +141,23 @@ public class NestedBracketsPerformanceTest {
         doIncreaseOfParseTimeTesting("IF(1=1, $1, 2)", "1", 20);
     }
 
-    @Test void testIssue2422() throws JSQLParserException {
+    @Test
+    void testIssue2422() throws JSQLParserException {
         String sqlStr =
                 "SELECT\n"
-                + "\t\t\t\t  ((((position('-' IN (\n"
-                + "\t\t\t\t              CASE WHEN ((\n"
-                + "\t\t\t\t                CASE WHEN (5 < 0) THEN\n"
-                + "\t\t\t\t                  'yes'\n"
-                + "\t\t\t\t                ELSE\n"
-                + "\t\t\t\t                  'no'\n"
-                + "\t\t\t\t                END) = 'yes') THEN\n"
-                + "\t\t\t\t                SUBSTRING('2012-january-18', (((LENGTH('2012-january-18')) + (5)) + (1)), ABS((0) - (5)))\n"
-                + "\t\t\t\t              ELSE\n"
-                + "\t\t\t\t                SUBSTRING('2012-january-18', ((5) + (1)))\n"
-                + "\t\t\t\t              END)) - 1) + (1)) - (5)) + (0))\n"
-                + "\t\t\t\tFROM\n"
-                + "\t\t\t\t  testtable";
+                        + "\t\t\t\t  ((((position('-' IN (\n"
+                        + "\t\t\t\t              CASE WHEN ((\n"
+                        + "\t\t\t\t                CASE WHEN (5 < 0) THEN\n"
+                        + "\t\t\t\t                  'yes'\n"
+                        + "\t\t\t\t                ELSE\n"
+                        + "\t\t\t\t                  'no'\n"
+                        + "\t\t\t\t                END) = 'yes') THEN\n"
+                        + "\t\t\t\t                SUBSTRING('2012-january-18', (((LENGTH('2012-january-18')) + (5)) + (1)), ABS((0) - (5)))\n"
+                        + "\t\t\t\t              ELSE\n"
+                        + "\t\t\t\t                SUBSTRING('2012-january-18', ((5) + (1)))\n"
+                        + "\t\t\t\t              END)) - 1) + (1)) - (5)) + (0))\n"
+                        + "\t\t\t\tFROM\n"
+                        + "\t\t\t\t  testtable";
         assertSqlCanBeParsedAndDeparsed(sqlStr);
     }
 
@@ -204,18 +207,17 @@ public class NestedBracketsPerformanceTest {
 
     private void doIncreaseOfParseTimeTesting(String template, String finalExpression, int maxDepth)
             throws JSQLParserException {
-        long oldDurationTime = 2000;
+        long oldDurationTime = TimeUnit.SECONDS.toNanos(2);
         int countProblematic = 0;
         for (int i = 0; i < maxDepth; i++) {
             String sql = "SELECT " + buildRecursiveBracketExpression(template, finalExpression, i)
                     + " FROM mytbl";
-            long startTime = System.currentTimeMillis();
-            assertSqlCanBeParsedAndDeparsed(sql, true, parser -> parser.withTimeOut(12000));
-            long durationTime = System.currentTimeMillis() - startTime;
+            long durationTime = medianParseDuration(sql);
 
             if (i > 0) {
-                System.out.println("old duration " + oldDurationTime + " new duration time "
-                        + durationTime + " for " + sql);
+                System.out.println("old duration " + TimeUnit.NANOSECONDS.toMicros(oldDurationTime)
+                        + " us, new duration " + TimeUnit.NANOSECONDS.toMicros(durationTime)
+                        + " us for " + sql);
             }
             if (oldDurationTime * 10 < durationTime) {
                 countProblematic++;
@@ -226,6 +228,19 @@ public class NestedBracketsPerformanceTest {
 
             oldDurationTime = Math.max(durationTime, 1);
         }
+    }
+
+    private long medianParseDuration(String sql) throws JSQLParserException {
+        // A single millisecond sample can turn scheduler or GC jitter into a tenfold increase.
+        // Keep the growth limit, but compare representative durations from a monotonic clock.
+        long[] durations = new long[5];
+        for (int sample = 0; sample < durations.length; sample++) {
+            long startTime = System.nanoTime();
+            assertSqlCanBeParsedAndDeparsed(sql, true, parser -> parser.withTimeOut(12000));
+            durations[sample] = System.nanoTime() - startTime;
+        }
+        Arrays.sort(durations);
+        return durations[durations.length / 2];
     }
 
     @Test
@@ -552,8 +567,7 @@ public class NestedBracketsPerformanceTest {
                     public void execute() throws Throwable {
                         TestUtils.assertSqlCanBeParsedAndDeparsed(sqlStr, true);
                     }
-                }
-        );
+                });
     }
 
     @Test
@@ -566,8 +580,7 @@ public class NestedBracketsPerformanceTest {
                     public void execute() throws Throwable {
                         TestUtils.assertSqlCanBeParsedAndDeparsed(sqlStr, true);
                     }
-                }
-        );
+                });
     }
 
     @Test
