@@ -9,8 +9,10 @@
  */
 package net.sf.jsqlparser.statement.select;
 
+import java.util.Objects;
+
 /**
- * Hints (Transact-SQL) - Join
+ * SQL Server join hints precede JOIN; Doris distribution hints follow it in square brackets.
  *
  * @link <a href=
  *       "https://learn.microsoft.com/en-us/sql/t-sql/queries/hints-transact-sql-join?view=sql-server-ver16">Hints
@@ -18,14 +20,32 @@ package net.sf.jsqlparser.statement.select;
  */
 
 public class JoinHint {
+    public enum Position {
+        BEFORE_JOIN, AFTER_JOIN
+    }
+
     private final String keyword;
+    private final Position position;
 
     public JoinHint(String keyword) {
+        this(keyword, Position.BEFORE_JOIN);
+    }
+
+    public JoinHint(String keyword, Position position) {
         this.keyword = keyword;
+        this.position = Objects.requireNonNull(position, "position");
+    }
+
+    public String getKeyword() {
+        return keyword;
+    }
+
+    public Position getPosition() {
+        return position;
     }
 
     @Override
     public String toString() {
-        return keyword;
+        return position == Position.AFTER_JOIN ? "[" + keyword + "]" : keyword;
     }
 }

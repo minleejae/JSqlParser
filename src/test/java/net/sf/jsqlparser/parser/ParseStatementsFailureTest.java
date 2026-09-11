@@ -69,9 +69,9 @@ class ParseStatementsFailureTest {
     }
 
     @Test
-    void preservesEmptyInputAndUnsupportedStatementContracts() throws Exception {
-        assertNull(CCJSqlParserUtil.parseStatements((String) null));
-        assertNull(CCJSqlParserUtil.parseStatements(""));
+    void returnsEmptyListsAndPreservesUnsupportedStatements() throws Exception {
+        assertTrue(CCJSqlParserUtil.parseStatements((String) null).isEmpty());
+        assertTrue(CCJSqlParserUtil.parseStatements("").isEmpty());
         assertInstanceOf(UnsupportedStatement.class,
                 CCJSqlParserUtil.parseStatements("SELECT 1; WHATEVER !",
                         parser -> parser.withAllowComplexParsing(false)

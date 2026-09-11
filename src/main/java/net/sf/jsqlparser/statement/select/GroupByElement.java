@@ -16,12 +16,19 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Objects;
+import java.util.function.Consumer;
 
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.expression.operators.relational.ParenthesedExpressionList;
 
 public class GroupByElement implements Serializable {
+    public enum SortDirection {
+        ASC, DESC
+    }
+
+    private final List<SortDirection> groupBySortDirections = new ArrayList<>();
     private ExpressionList<Expression> groupByExpressions = new ExpressionList<>();
     private List<ExpressionList<Expression>> groupingSets = new ArrayList<>();
     // postgres rollup is an ExpressionList
@@ -45,6 +52,9 @@ public class GroupByElement implements Serializable {
     }
 
     public void setGroupByExpressions(ExpressionList<Expression> groupByExpressions) {
+        if (this.groupByExpressions != groupByExpressions) {
+            groupBySortDirections.clear();
+        }
         this.groupByExpressions = groupByExpressions;
     }
 
@@ -68,35 +78,83 @@ public class GroupByElement implements Serializable {
         this.groupingSets.add(list);
     }
 
+    /** Returns the explicit direction at a grouping-list position, or null if omitted. */
+    public SortDirection getGroupBySortDirection(int index) {
+        Objects.checkIndex(index, groupByExpressions.size());
+        return index < groupBySortDirections.size() ? groupBySortDirections.get(index) : null;
+    }
+
+    /** Directions belong to list positions. Replacing the expression list clears them. */
+    public void setGroupBySortDirection(int index, SortDirection direction) {
+        Objects.checkIndex(index, groupByExpressions.size());
+        while (groupBySortDirections.size() <= index) {
+            groupBySortDirections.add(null);
+        }
+        groupBySortDirections.set(index, direction);
+    }
+
+    public boolean hasGroupBySortDirections() {
+        if (groupByExpressions != null && !groupBySortDirections.isEmpty()) {
+            for (int i = 0; i < groupByExpressions.size(); i++) {
+                if (getGroupBySortDirection(i) != null) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     @Override
-    @SuppressWarnings({"PMD.CyclomaticComplexity"})
     public String toString() {
-        StringBuilder b = new StringBuilder();
-        b.append("GROUP BY ");
+        StringBuilder builder = new StringBuilder();
+        appendTo(builder, builder::append, builder::append);
+        return builder.toString();
+    }
 
+    /** Shares clause layout while letting a deparser visit each expression. */
+    public void appendTo(StringBuilder builder, Consumer<ExpressionList<?>> listRenderer,
+            Consumer<Expression> expressionRenderer) {
+        builder.append("GROUP BY ");
         if (groupByExpressions != null) {
-            b.append(groupByExpressions);
+            if (hasGroupBySortDirections()) {
+                appendOrderedExpressions(builder, expressionRenderer);
+            } else {
+                listRenderer.accept(groupByExpressions);
+            }
         }
-
-        int i = 0;
         if (!groupingSets.isEmpty()) {
-            if (b.charAt(b.length() - 1) != ' ') {
-                b.append(' ');
+            if (builder.charAt(builder.length() - 1) != ' ') {
+                builder.append(' ');
             }
-            b.append("GROUPING SETS (");
-            for (ExpressionList<?> expressionList : groupingSets) {
-                b.append(i++ > 0 ? ", " : "").append(Select.getStringList(
-                        expressionList,
-                        true, expressionList instanceof ParenthesedExpressionList));
+            builder.append("GROUPING SETS (");
+            for (int i = 0; i < groupingSets.size(); i++) {
+                builder.append(i > 0 ? ", " : "");
+                listRenderer.accept(groupingSets.get(i));
             }
-            b.append(")");
+            builder.append(")");
         }
-
         if (isMysqlWithRollup()) {
-            b.append(" WITH ROLLUP");
+            builder.append(" WITH ROLLUP");
         }
+    }
 
-        return b.toString();
+    private void appendOrderedExpressions(StringBuilder builder,
+            Consumer<Expression> expressionRenderer) {
+        boolean brackets = groupByExpressions instanceof ParenthesedExpressionList<?>;
+        if (brackets) {
+            builder.append('(');
+        }
+        for (int i = 0; i < groupByExpressions.size(); i++) {
+            builder.append(i > 0 ? ", " : "");
+            expressionRenderer.accept(groupByExpressions.get(i));
+            SortDirection direction = getGroupBySortDirection(i);
+            if (direction != null) {
+                builder.append(' ').append(direction);
+            }
+        }
+        if (brackets) {
+            builder.append(')');
+        }
     }
 
     public GroupByElement withGroupByExpressions(ExpressionList<Expression> groupByExpressions) {
@@ -115,9 +173,9 @@ public class GroupByElement implements Serializable {
 
     public GroupByElement addGroupByExpressions(
             Collection<? extends Expression> groupByExpressions) {
-        ExpressionList collection =
-                Optional.ofNullable(getGroupByExpressions()).orElseGet(ExpressionList::new);
-        Collections.addAll(collection, groupByExpressions);
+        ExpressionList<Expression> collection =
+                Optional.ofNullable(getGroupByExpressionList()).orElseGet(ExpressionList::new);
+        collection.addAll(groupByExpressions);
         return this.withGroupByExpressions(collection);
     }
 

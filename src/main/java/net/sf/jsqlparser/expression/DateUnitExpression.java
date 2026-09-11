@@ -42,7 +42,19 @@ public class DateUnitExpression extends ASTNodeAccessImpl implements Expression 
     }
 
     public enum DateUnit {
-        CENTURY, DECADE, YEAR, QUARTER, MONTH, WEEK, DAY, HOUR, MINUTE, SECOND, MILLISECOND, MICROSECOND, NANOSECOND;
+        CENTURY, DECADE, YEAR, QUARTER, MONTH, WEEK, DAY, HOUR, MINUTE, SECOND, MILLISECOND, MICROSECOND, NANOSECOND, SQL_TSI_FRAC_SECOND, SQL_TSI_SECOND, SQL_TSI_MINUTE, SQL_TSI_HOUR, SQL_TSI_DAY, SQL_TSI_WEEK, SQL_TSI_MONTH, SQL_TSI_QUARTER, SQL_TSI_YEAR;
+
+        /** Returns an ODBC interval keyword, or null when the text is not one. */
+        public static DateUnit fromOdbcInterval(String text) {
+            if (text == null || !text.toUpperCase(Locale.ROOT).startsWith("SQL_TSI_")) {
+                return null;
+            }
+            try {
+                return from(text);
+            } catch (IllegalArgumentException exception) {
+                return null;
+            }
+        }
 
         public static DateUnit from(String UnitStr) {
             return Enum.valueOf(DateUnit.class, UnitStr.toUpperCase(Locale.ROOT));
