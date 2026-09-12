@@ -13,13 +13,16 @@ import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.Consumer;
+import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 
 /** A structured option following a column data type. */
 public class ColumnOption implements Serializable {
 
     public enum Kind {
-        SERIAL_DEFAULT_VALUE, REFERENCE, IDENTITY, CONSTRAINT, OTHER
+        SERIAL_DEFAULT_VALUE, REFERENCE, IDENTITY, CONSTRAINT, DEFAULT, OTHER
     }
 
     private Kind kind = Kind.OTHER;
@@ -27,6 +30,24 @@ public class ColumnOption implements Serializable {
     private ForeignKeyReference foreignKeyReference;
     private IdentityDefinition identityDefinition;
     private Index constraint;
+    private Expression defaultExpression;
+
+    /** Creates a DEFAULT option. Use a NullValue expression for SQL NULL. */
+    public static ColumnOption defaultValue(Expression expression) {
+        ColumnOption option = new ColumnOption();
+        option.kind = Kind.DEFAULT;
+        option.setDefaultExpression(expression);
+        return option;
+    }
+
+    public Expression getDefaultExpression() {
+        return defaultExpression;
+    }
+
+    /** Replaces the expression of a DEFAULT option created by {@link #defaultValue(Expression)}. */
+    public void setDefaultExpression(Expression expression) {
+        defaultExpression = Objects.requireNonNull(expression, "defaultExpression");
+    }
 
     public static ColumnOption identity(IdentityDefinition definition) {
         ColumnOption option = new ColumnOption();
@@ -78,6 +99,9 @@ public class ColumnOption implements Serializable {
     }
 
     public List<String> getTokens() {
+        if (kind == Kind.DEFAULT) {
+            return Arrays.asList("DEFAULT", String.valueOf(defaultExpression));
+        }
         return kind == Kind.OTHER || kind == Kind.SERIAL_DEFAULT_VALUE ? tokens
                 : Collections.singletonList(toString());
     }
@@ -88,15 +112,30 @@ public class ColumnOption implements Serializable {
 
     @Override
     public String toString() {
+        StringBuilder builder = new StringBuilder();
+        appendTo(builder, builder::append);
+        return builder.toString();
+    }
+
+    /** Appends the option using the supplied printer for structured expressions. */
+    public void appendTo(StringBuilder builder, Consumer<Expression> expressionPrinter) {
         switch (kind) {
+            case DEFAULT:
+                builder.append("DEFAULT ");
+                expressionPrinter.accept(defaultExpression);
+                break;
             case REFERENCE:
-                return foreignKeyReference.toString();
+                builder.append(foreignKeyReference);
+                break;
             case IDENTITY:
-                return identityDefinition.toString();
+                builder.append(identityDefinition);
+                break;
             case CONSTRAINT:
-                return constraint.toString();
+                constraint.appendTo(builder, expressionPrinter);
+                break;
             default:
-                return PlainSelect.getStringList(tokens, false, false);
+                builder.append(PlainSelect.getStringList(tokens, false, false));
+                break;
         }
     }
 }

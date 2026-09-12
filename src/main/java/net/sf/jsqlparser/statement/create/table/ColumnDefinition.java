@@ -11,6 +11,7 @@ package net.sf.jsqlparser.statement.create.table;
 
 import net.sf.jsqlparser.statement.imprt.ImportColumn;
 import net.sf.jsqlparser.statement.select.PlainSelect;
+import net.sf.jsqlparser.expression.Expression;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -19,6 +20,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * Globally used definition class for columns.
@@ -54,7 +56,7 @@ public class ColumnDefinition implements ImportColumn, TableElement, Serializabl
     /**
      * Returns raw specifications, or a token snapshot when structured options are present. Use the
      * option API or {@link #addColumnSpecs(Collection)} to append without discarding structured
-     * references and constraints.
+     * expressions, references and constraints. DEFAULT values use the expression's SQL rendering.
      */
     public List<String> getColumnSpecs() {
         if (columnOptions != null) {
@@ -73,7 +75,7 @@ public class ColumnDefinition implements ImportColumn, TableElement, Serializabl
     }
 
     /**
-     * Returns column options in source order, including structured references and MySQL
+     * Returns column options in source order, including structured defaults, references and MySQL
      * {@code SERIAL DEFAULT VALUE}.
      */
     public List<ColumnOption> getColumnOptions() {
@@ -134,17 +136,42 @@ public class ColumnDefinition implements ImportColumn, TableElement, Serializabl
 
     @Override
     public String toString() {
-        return (columnName + " " + toStringDataTypeAndSpec()).trim();
+        StringBuilder builder = new StringBuilder();
+        appendTo(builder, builder::append);
+        return builder.toString().trim();
+    }
+
+    /** Appends a column definition using the supplied printer for structured expressions. */
+    public void appendTo(StringBuilder builder, Consumer<Expression> expressionPrinter) {
+        builder.append(columnName);
+        if (colDataType != null || withOptions) {
+            builder.append(' ');
+        }
+        appendDataTypeAndSpecTo(builder, expressionPrinter);
     }
 
     public String toStringDataTypeAndSpec() {
-        return (colDataType == null ? "" : colDataType)
-                + (withOptions ? "WITH OPTIONS" : "")
-                + (columnOptions != null && !columnOptions.isEmpty()
-                        ? " " + PlainSelect.getStringList(columnOptions, false, false)
-                        : columnSpecs != null && !columnSpecs.isEmpty()
-                                ? " " + PlainSelect.getStringList(columnSpecs, false, false)
-                                : "");
+        StringBuilder builder = new StringBuilder();
+        appendDataTypeAndSpecTo(builder, builder::append);
+        return builder.toString();
+    }
+
+    protected void appendDataTypeAndSpecTo(StringBuilder builder,
+            Consumer<Expression> expressionPrinter) {
+        if (colDataType != null) {
+            builder.append(colDataType);
+        }
+        if (withOptions) {
+            builder.append("WITH OPTIONS");
+        }
+        if (columnOptions != null) {
+            for (ColumnOption option : columnOptions) {
+                builder.append(' ');
+                option.appendTo(builder, expressionPrinter);
+            }
+        } else if (columnSpecs != null && !columnSpecs.isEmpty()) {
+            builder.append(' ').append(PlainSelect.getStringList(columnSpecs, false, false));
+        }
     }
 
     public ColumnDefinition withColumnName(String columnName) {

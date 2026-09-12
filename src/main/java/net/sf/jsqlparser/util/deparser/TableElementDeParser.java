@@ -11,7 +11,6 @@ package net.sf.jsqlparser.util.deparser;
 
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
-import net.sf.jsqlparser.statement.create.table.ColumnOption;
 import net.sf.jsqlparser.statement.create.table.Index;
 import net.sf.jsqlparser.statement.create.table.TableElement;
 
@@ -30,29 +29,11 @@ public class TableElementDeParser extends AbstractDeParser<TableElement> {
         if (element instanceof Index) {
             ((Index) element).appendTo(builder,
                     expression -> expression.accept(expressionVisitor, null));
-        } else if (element instanceof ColumnDefinition
-                && ((ColumnDefinition) element).getColumnOptions() != null) {
-            deParseColumn((ColumnDefinition) element);
+        } else if (element instanceof ColumnDefinition) {
+            ((ColumnDefinition) element).appendTo(builder,
+                    expression -> expression.accept(expressionVisitor, null));
         } else {
             builder.append(element);
-        }
-    }
-
-    private void deParseColumn(ColumnDefinition column) {
-        builder.append(column.getColumnName());
-        if (column.getColDataType() != null) {
-            builder.append(' ').append(column.getColDataType());
-        }
-        if (column.isWithOptions()) {
-            builder.append(" WITH OPTIONS");
-        }
-        for (ColumnOption option : column.getColumnOptions()) {
-            builder.append(' ');
-            if (option.getConstraint() != null) {
-                deParse(option.getConstraint());
-            } else {
-                builder.append(option);
-            }
         }
     }
 

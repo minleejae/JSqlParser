@@ -971,7 +971,7 @@ public class AlterTest {
 
         // There shall be no COLUMN where there is no COLUMN
         assertStatementCanBeDeparsedAs(parsed,
-                "ALTER TABLE my_table ADD some_column BOOLEAN DEFAULT FALSE");
+                "ALTER TABLE my_table ADD some_column BOOLEAN DEFAULT false");
     }
 
     private void assertReferentialActionOnConstraint(Alter parsed, Action onUpdate,

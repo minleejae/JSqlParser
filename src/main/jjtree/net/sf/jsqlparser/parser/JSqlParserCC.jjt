@@ -1702,8 +1702,10 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
             case K_MATCH_PHRASE:      // MATCH_PHRASE
             case K_MATCH_PHRASE_PREFIX: // MATCH_PHRASE_PREFIX
             case K_MATCH_REGEXP:      // MATCH_REGEXP
-            case K_NOT:               // NOT IN / NOT BETWEEN / NOT LIKE / NOT ISNULL / NOT SIMILAR
                 return true;
+            case K_NOT:               // NOT IN / NOT BETWEEN / NOT LIKE / NOT ISNULL / NOT SIMILAR
+                // A column's NOT NULL constraint starts after its DEFAULT expression.
+                return getToken(2).kind != K_NULL;
             // Oracle (+) before IN: col(+) IN (...)
             case OPENING_BRACKET:
                 return getToken(2).image.equals("+");
@@ -12566,6 +12568,7 @@ ColumnOption ColumnDefinitionOption(): {
     ColumnOption option;
     IdentityDefinition identity;
     NamedConstraint constraint;
+    Expression defaultExpression;
 } {
     (
         LOOKAHEAD({ isKeywordAhead("GENERATED")
@@ -12582,6 +12585,17 @@ ColumnOption ColumnDefinitionOption(): {
         |
         LOOKAHEAD(<K_REFERENCES>) reference=ForeignKeyReferenceSpec()
         { option = ColumnOption.reference(reference); }
+        |
+        LOOKAHEAD(<K_DROP> <K_DEFAULT>) <K_DROP> <K_DEFAULT>
+        { option = ColumnOption.raw("DROP", "DEFAULT"); }
+        |
+        LOOKAHEAD(<K_DEFAULT> <K_ON> <K_NULL>) <K_DEFAULT> <K_ON> <K_NULL>
+        { option = ColumnOption.raw("DEFAULT", "ON", "NULL"); }
+        |
+        LOOKAHEAD(<K_DEFAULT>) <K_DEFAULT> { option = ColumnOption.raw("DEFAULT"); }
+        // Db2 permits an omitted default value. Keep these implicit defaults raw.
+        [ LOOKAHEAD(2, { !(getToken(1).kind == K_NOT && getToken(2).kind == K_NULL) })
+            defaultExpression=Expression() { option = ColumnOption.defaultValue(defaultExpression); } ]
         |
         parameter=ColumnDefinitionParameter()
         { option = ColumnOption.raw(parameter); }

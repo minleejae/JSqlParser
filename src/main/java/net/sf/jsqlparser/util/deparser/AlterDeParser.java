@@ -81,23 +81,12 @@ public class AlterDeParser extends AbstractDeParser<Alter> {
                     expression -> expression.accept(expressionVisitor, null));
             return;
         }
-        if (action.getColDataTypeList() == null || action.getColDataTypeList().size() != 1
-                || action.getColDataTypeList().get(0).getUsingExpression() == null) {
+        if (action.getColDataTypeList() != null) {
+            action.appendColumnDefinitionsTo(builder,
+                    expression -> expression.accept(expressionVisitor, null));
+        } else {
             builder.append(action);
-            return;
         }
-        AlterExpression.ColumnDataType column = action.getColDataTypeList().get(0);
-        builder.append(action.getOperation()).append(' ');
-        if (action.hasColumn()) {
-            builder.append("COLUMN ");
-        }
-        if (action.isUsingIfExists()) {
-            builder.append("IF EXISTS ");
-        }
-        builder.append(column.getColumnName()).append(column.isWithType() ? " TYPE " : " ")
-                .append(column.toStringDataTypeAndSpec()).append(" USING ");
-        column.getUsingExpression().accept(expressionVisitor, null);
-        deParseTail(action);
     }
 
     private void deParseTail(AlterExpression action) {

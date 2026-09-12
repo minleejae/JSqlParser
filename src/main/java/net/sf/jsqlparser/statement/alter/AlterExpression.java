@@ -1115,9 +1115,19 @@ public class AlterExpression implements Serializable {
      * Handles the general case for ADD, MODIFY, CHANGE, DROP (column), COMMENT, row-level security,
      * and all field-based dispatch (columns, constraints, FK, UK, PK, index).
      */
+    protected void toStringGeneral(StringBuilder b) {
+        toStringGeneral(b, b::append);
+    }
+
+    /** Appends a column-definition action, including its common tail. */
+    public void appendColumnDefinitionsTo(StringBuilder b, Consumer<Expression> expressionPrinter) {
+        toStringGeneral(b, column -> column.appendTo(b, expressionPrinter));
+        appendCommonTail(b);
+    }
+
     @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPathComplexity",
             "PMD.ExcessiveMethodLength"})
-    protected void toStringGeneral(StringBuilder b) {
+    private void toStringGeneral(StringBuilder b, Consumer<ColumnDataType> columnPrinter) {
         if (operation == AlterOperation.COMMENT_WITH_EQUAL_SIGN) {
             b.append("COMMENT =").append(" ");
         } else if (operation == AlterOperation.ENABLE_ROW_LEVEL_SECURITY) {
@@ -1170,7 +1180,12 @@ public class AlterExpression implements Serializable {
             if (useBrackets && colDataTypeList.size() == 1) {
                 b.append(" ( ");
             }
-            b.append(PlainSelect.getStringList(colDataTypeList));
+            for (int i = 0; i < colDataTypeList.size(); i++) {
+                if (i > 0) {
+                    b.append(", ");
+                }
+                columnPrinter.accept(colDataTypeList.get(i));
+            }
             if (useBrackets && colDataTypeList.size() == 1) {
                 b.append(" ) ");
             }
@@ -1490,13 +1505,25 @@ public class AlterExpression implements Serializable {
 
         @Override
         public String toString() {
+            StringBuilder builder = new StringBuilder();
+            appendTo(builder, builder::append);
+            return builder.toString();
+        }
+
+        @Override
+        public void appendTo(StringBuilder builder, Consumer<Expression> expressionPrinter) {
+            builder.append(getColumnName());
             if (identityAlterations != null) {
-                return getColumnName() + " "
-                        + PlainSelect.getStringList(identityAlterations, false, false);
+                builder.append(' ')
+                        .append(PlainSelect.getStringList(identityAlterations, false, false));
+                return;
             }
-            return getColumnName() + (withType ? " TYPE " : getColDataType() == null ? "" : " ")
-                    + toStringDataTypeAndSpec()
-                    + (usingExpression == null ? "" : " USING " + usingExpression);
+            builder.append(withType ? " TYPE " : getColDataType() == null ? "" : " ");
+            appendDataTypeAndSpecTo(builder, expressionPrinter);
+            if (usingExpression != null) {
+                builder.append(" USING ");
+                expressionPrinter.accept(usingExpression);
+            }
         }
 
         @Override
