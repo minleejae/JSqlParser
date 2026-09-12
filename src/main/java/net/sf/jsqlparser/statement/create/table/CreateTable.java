@@ -91,10 +91,19 @@ public class CreateTable implements Statement {
 
     /**
      * @return a list of options (as simple strings) of this table definition, as ("TYPE", "=",
-     *         "MYISAM")
+     *         "MYISAM"). For typed options, this is a snapshot of their current tokens; use
+     *         {@link #getTableOptions()} to edit the structured options or
+     *         {@link #setTableOptionsStrings(List)} to replace them with raw options.
      */
     public List<String> getTableOptionsStrings() {
-        return tableOptionsStrings;
+        if (tableOptions == null) {
+            return tableOptionsStrings;
+        }
+        List<String> tokens = new ArrayList<>();
+        for (TableOption option : tableOptions) {
+            tokens.addAll(option.getTokens());
+        }
+        return tokens;
     }
 
     public void setTableOptionsStrings(List<String> tableOptionsStrings) {
@@ -109,14 +118,7 @@ public class CreateTable implements Statement {
 
     public void setTableOptions(List<TableOption> tableOptions) {
         this.tableOptions = tableOptions;
-        if (tableOptions == null) {
-            tableOptionsStrings = null;
-            return;
-        }
-        tableOptionsStrings = new ArrayList<>();
-        for (TableOption option : tableOptions) {
-            tableOptionsStrings.addAll(option.getTokens());
-        }
+        tableOptionsStrings = null;
     }
 
     /** Returns the first option of the requested kind, if present. */
