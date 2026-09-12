@@ -1712,6 +1712,21 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         }
     }
 
+    private boolean isLargeObjectTypeAhead() {
+        int offset = 1;
+        if (isKeywordAhead("NATIONAL")) {
+            offset++;
+            if (!"CHARACTER".equalsIgnoreCase(getToken(offset).image)) {
+                return false;
+            }
+        }
+        String name = getToken(offset).image;
+        return ("CHARACTER".equalsIgnoreCase(name) || "CHAR".equalsIgnoreCase(name)
+                || "NCHAR".equalsIgnoreCase(name) || "BINARY".equalsIgnoreCase(name))
+                && "LARGE".equalsIgnoreCase(getToken(offset + 1).image)
+                && "OBJECT".equalsIgnoreCase(getToken(offset + 2).image);
+    }
+
     /**
      * Extracts the numeric precision embedded in a DT_ZONE token image such as
      * "TIMESTAMP(3) WITH TIME ZONE", or null when the image carries no parameter.
@@ -13586,6 +13601,22 @@ ColDataType DataType():
     }
 }
 
+/** Shared SQL large-object names; length and array suffixes stay in ColDataType. */
+String LargeObjectTypeName():
+{
+    Token national = null;
+    Token type;
+    Token large;
+    Token object;
+}
+{
+    [ LOOKAHEAD(<S_IDENTIFIER>) national=<S_IDENTIFIER> ]
+    ( type=<K_CHARACTER> | type=<K_CHAR> | type=<K_BINARY> | type=<DATA_TYPE> )
+    large=<S_IDENTIFIER> object=<S_IDENTIFIER>
+    { return (national == null ? "" : national.image + " ")
+            + type.image + " " + large.image + " " + object.image; }
+}
+
 ColDataType ColDataType():
 {
     ColDataType colDataType = new ColDataType();
@@ -13612,6 +13643,9 @@ ColDataType ColDataType():
 }
 {
     (
+        LOOKAHEAD({ isLargeObjectTypeAhead() }) type=LargeObjectTypeName()
+        { colDataType.setDataType(type); }
+        |
         LOOKAHEAD({ isXmlTypeName(getToken(1).image) && "(".equals(getToken(2).image) })
         ( tk=<K_XML> | tk=<S_QUOTED_IDENTIFIER> )
         { colDataType.setDataType(tk.image); }
