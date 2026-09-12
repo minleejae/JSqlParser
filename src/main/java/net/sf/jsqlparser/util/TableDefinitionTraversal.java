@@ -116,23 +116,8 @@ public final class TableDefinitionTraversal {
 
     /** Visits expressions belonging to the selected PostgreSQL bound type. */
     public static void visit(PartitionBound bound, Consumer<Expression> expressions) {
-        if (bound == null || bound.getType() == null) {
-            return;
-        }
-        switch (bound.getType()) {
-            case RANGE:
-                accept(bound.getFromExpressions(), expressions);
-                accept(bound.getToExpressions(), expressions);
-                break;
-            case LIST:
-                accept(bound.getInExpressions(), expressions);
-                break;
-            case HASH:
-                accept(bound.getModulus(), expressions);
-                accept(bound.getRemainder(), expressions);
-                break;
-            default:
-                break;
+        if (bound != null) {
+            bound.visitExpressions(expressions);
         }
     }
 

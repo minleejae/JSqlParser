@@ -71,11 +71,29 @@ class PartitionTraversalTest {
         assertThat(visited).containsExactly("id", "id", "1", "0", "10");
     }
 
+    @Test
+    void rangeMarkersAreNotVisitedAsColumnReferences() throws JSQLParserException {
+        List<String> columns = new ArrayList<>();
+        ExpressionVisitorAdapter<Void> expressions = new ExpressionVisitorAdapter<Void>() {
+            @Override
+            public <S> Void visit(Column column, S context) {
+                columns.add(column.getColumnName());
+                return null;
+            }
+        };
+        CCJSqlParserUtil.parse("ALTER TABLE parent ATTACH PARTITION child "
+                + "FOR VALUES FROM (MINVALUE) TO (MAXVALUE)")
+                .accept(new StatementVisitorAdapter<>(new SelectVisitorAdapter<>(expressions)),
+                        null);
+        assertThat(columns).isEmpty();
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "CREATE TABLE t (id INT) PARTITION BY HASH (id + 1) PARTITIONS 2",
             "ALTER TABLE t PARTITION BY RANGE COLUMNS (id)",
             "CREATE TABLE child PARTITION OF parent FOR VALUES FROM (0) TO (10)",
+            "CREATE TABLE child PARTITION OF parent FOR VALUES FROM (MINVALUE) TO (MAXVALUE)",
             "ALTER TABLE parent ATTACH PARTITION child FOR VALUES IN (1, 2)",
             "ALTER TABLE parent ATTACH PARTITION child FOR VALUES WITH (MODULUS 4, REMAINDER 1)",
             "ALTER TABLE parent ATTACH PARTITION child DEFAULT"

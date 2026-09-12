@@ -12,6 +12,7 @@ package net.sf.jsqlparser.statement.create.table;
 import java.io.Serializable;
 import java.util.function.Consumer;
 import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 
 /** A PostgreSQL declarative-partition bound. */
@@ -123,9 +124,9 @@ public class PartitionBound implements Serializable {
         switch (type) {
             case RANGE:
                 sql.append("FOR VALUES FROM (");
-                expressionPrinter.accept(fromExpressions);
+                appendRangeValues(sql, fromExpressions, expressionPrinter);
                 sql.append(") TO (");
-                expressionPrinter.accept(toExpressions);
+                appendRangeValues(sql, toExpressions, expressionPrinter);
                 sql.append(')');
                 break;
             case LIST:
@@ -147,4 +148,68 @@ public class PartitionBound implements Serializable {
                 break;
         }
     }
+
+    /** Visits active bound expressions, excluding the MINVALUE/MAXVALUE range markers. */
+    public void visitExpressions(Consumer<Expression> expressions) {
+        if (type == null) {
+            return;
+        }
+        switch (type) {
+            case RANGE:
+                visitRangeValues(fromExpressions, expressions);
+                visitRangeValues(toExpressions, expressions);
+                break;
+            case LIST:
+                if (inExpressions != null) {
+                    expressions.accept(inExpressions);
+                }
+                break;
+            case HASH:
+                if (modulus != null) {
+                    expressions.accept(modulus);
+                }
+                if (remainder != null) {
+                    expressions.accept(remainder);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    private static void visitRangeValues(ExpressionList<Expression> values,
+            Consumer<Expression> expressions) {
+        if (values != null) {
+            values.stream().filter(value -> !isRangeMarker(value)).forEach(expressions);
+        }
+    }
+
+    private static void appendRangeValues(StringBuilder sql, ExpressionList<Expression> values,
+            Consumer<Expression> expressions) {
+        if (values == null) {
+            sql.append("null");
+            return;
+        }
+        for (int i = 0; i < values.size(); i++) {
+            if (i > 0) {
+                sql.append(", ");
+            }
+            Expression value = values.get(i);
+            if (isRangeMarker(value)) {
+                sql.append(value);
+            } else {
+                expressions.accept(value);
+            }
+        }
+    }
+
+    private static boolean isRangeMarker(Expression expression) {
+        if (!(expression instanceof Column)) {
+            return false;
+        }
+        Column column = (Column) expression;
+        return column.getTable() == null && ("MINVALUE".equalsIgnoreCase(column.getColumnName())
+                || "MAXVALUE".equalsIgnoreCase(column.getColumnName()));
+    }
+
 }
