@@ -14552,7 +14552,7 @@ AlterExpression.ColumnSetDefault AlterExpressionColumnSetDefault():
 {
     columnName = RelObjectName() <K_SET> <K_DEFAULT> defaultValue = Expression()
     {
-        return new AlterExpression.ColumnSetDefault(columnName, defaultValue.toString());
+        return AlterExpression.ColumnSetDefault.fromExpression(columnName, defaultValue);
     }
 }
 

@@ -18,6 +18,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.statement.ReferentialAction;
@@ -883,6 +884,16 @@ public class AlterExpression implements Serializable {
     }
 
     protected void toStringAlterColumn(StringBuilder b) {
+        appendAlterColumn(b, b::append);
+    }
+
+    /** Renders ALTER COLUMN default/visibility actions with their common tail. */
+    public void appendColumnActionTo(StringBuilder b, Consumer<Expression> expressionPrinter) {
+        appendAlterColumn(b, expressionPrinter);
+        appendCommonTail(b);
+    }
+
+    private void appendAlterColumn(StringBuilder b, Consumer<Expression> expressionPrinter) {
         b.append("ALTER ");
         if (hasColumn) {
             b.append("COLUMN ");
@@ -890,7 +901,12 @@ public class AlterExpression implements Serializable {
         if (columnDropDefaultList != null && !columnDropDefaultList.isEmpty()) {
             b.append(PlainSelect.getStringList(columnDropDefaultList));
         } else if (columnSetDefaultList != null && !columnSetDefaultList.isEmpty()) {
-            b.append(PlainSelect.getStringList(columnSetDefaultList));
+            for (int i = 0; i < columnSetDefaultList.size(); i++) {
+                if (i > 0) {
+                    b.append(", ");
+                }
+                columnSetDefaultList.get(i).appendTo(b, expressionPrinter);
+            }
         } else {
             b.append(PlainSelect.getStringList(columnSetVisibilityList));
         }
@@ -1575,7 +1591,8 @@ public class AlterExpression implements Serializable {
 
     public static final class ColumnSetDefault implements Serializable {
         private final String columnName;
-        private final String defaultValue;
+        private String defaultValue;
+        private Expression defaultExpression;
 
         public ColumnSetDefault(String columnName, String defaultValue) {
             this.columnName = columnName;
@@ -1586,13 +1603,40 @@ public class AlterExpression implements Serializable {
             return columnName;
         }
 
+        /** Constructs a structured default without overloading the legacy nullable String API. */
+        public static ColumnSetDefault fromExpression(String columnName, Expression expression) {
+            ColumnSetDefault result = new ColumnSetDefault(columnName, null);
+            result.setDefaultExpression(expression);
+            return result;
+        }
+
+        public Expression getDefaultExpression() {
+            return defaultExpression;
+        }
+
+        public void setDefaultExpression(Expression defaultExpression) {
+            this.defaultExpression = defaultExpression;
+            this.defaultValue = null;
+        }
+
         public String getDefaultValue() {
-            return defaultValue;
+            return defaultExpression == null ? defaultValue : defaultExpression.toString();
+        }
+
+        public void appendTo(StringBuilder sql, Consumer<Expression> expressionPrinter) {
+            sql.append(columnName).append(" SET DEFAULT ");
+            if (defaultExpression == null) {
+                sql.append(defaultValue);
+            } else {
+                expressionPrinter.accept(defaultExpression);
+            }
         }
 
         @Override
         public String toString() {
-            return columnName + " SET DEFAULT " + defaultValue;
+            StringBuilder sql = new StringBuilder();
+            appendTo(sql, sql::append);
+            return sql.toString();
         }
     }
 

@@ -40,14 +40,8 @@ public class AlterValidator extends AbstractValidator<Alter> {
     }
 
     public void validate(Alter alter, AlterExpression e) {
-        if (e.getColDataTypeList() != null) {
-            e.getColDataTypeList().forEach(column -> TableDefinitionTraversal.visit(column,
-                    this::validateOptionalExpression, this::validateOptionalFromItem));
-        }
-        if (e.getIndex() != null) {
-            TableDefinitionTraversal.visit(e.getIndex(), this::validateOptionalExpression,
-                    this::validateOptionalFromItem);
-        }
+        TableDefinitionTraversal.visit(e, this::validateOptionalExpression,
+                this::validateOptionalFromItem);
         for (ValidationCapability c : getCapabilities()) {
 
             validateOptionalColumnName(c, e.getColumnOldName());

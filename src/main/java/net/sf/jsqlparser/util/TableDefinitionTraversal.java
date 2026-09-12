@@ -44,6 +44,10 @@ public final class TableDefinitionTraversal {
     /** Visits the structured definitions and expressions belonging to a single ALTER action. */
     public static void visit(AlterExpression action, Consumer<Expression> expressions,
             Consumer<Table> tables) {
+        if (action.getColumnSetDefaultList() != null) {
+            action.getColumnSetDefaultList()
+                    .forEach(column -> accept(column.getDefaultExpression(), expressions));
+        }
         if (action.getColDataTypeList() != null) {
             action.getColDataTypeList().forEach(column -> visit(column, expressions, tables));
         }
