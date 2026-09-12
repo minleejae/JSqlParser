@@ -12,7 +12,6 @@ package net.sf.jsqlparser.util.deparser;
 import net.sf.jsqlparser.statement.alter.Alter;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
 import net.sf.jsqlparser.statement.alter.AlterExpression;
-import net.sf.jsqlparser.statement.alter.AlterOperation;
 import net.sf.jsqlparser.statement.alter.AlterExpressionPrimaryKey;
 import net.sf.jsqlparser.statement.create.table.DefaultConstraint;
 import net.sf.jsqlparser.statement.select.PlainSelect;
@@ -50,13 +49,6 @@ public class AlterDeParser extends AbstractDeParser<Alter> {
     }
 
     private void deParseAction(AlterExpression action) {
-        if (action.getOperation() == AlterOperation.ALTER
-                && action.getColumnSetDefaultList() != null
-                && !action.getColumnSetDefaultList().isEmpty()) {
-            action.appendColumnActionTo(builder,
-                    expression -> expression.accept(expressionVisitor, null));
-            return;
-        }
         if (action instanceof AlterExpressionPrimaryKey) {
             ((AlterExpressionPrimaryKey) action).appendTo(builder,
                     expression -> expression.accept(expressionVisitor, null));
@@ -66,6 +58,13 @@ public class AlterDeParser extends AbstractDeParser<Alter> {
             builder.append(action.getOperation()).append(' ');
             new TableElementDeParser(builder, expressionVisitor).deParse(action.getIndex());
             deParseTail(action);
+            return;
+        }
+        if (action.getOperation() == net.sf.jsqlparser.statement.alter.AlterOperation.ALTER
+                && action.getColumnSetDefaultList() != null
+                && !action.getColumnSetDefaultList().isEmpty()) {
+            action.appendColumnActionTo(builder,
+                    expression -> expression.accept(expressionVisitor, null));
             return;
         }
         if (action.getColDataTypeList() == null || action.getColDataTypeList().size() != 1
