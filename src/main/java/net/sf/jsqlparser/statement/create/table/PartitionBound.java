@@ -10,6 +10,7 @@
 package net.sf.jsqlparser.statement.create.table;
 
 import java.io.Serializable;
+import java.util.function.Consumer;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 
@@ -113,17 +114,37 @@ public class PartitionBound implements Serializable {
 
     @Override
     public String toString() {
+        StringBuilder sql = new StringBuilder();
+        appendTo(sql, sql::append);
+        return sql.toString();
+    }
+
+    public void appendTo(StringBuilder sql, Consumer<Expression> expressionPrinter) {
         switch (type) {
             case RANGE:
-                return "FOR VALUES FROM (" + fromExpressions + ") TO (" + toExpressions + ")";
+                sql.append("FOR VALUES FROM (");
+                expressionPrinter.accept(fromExpressions);
+                sql.append(") TO (");
+                expressionPrinter.accept(toExpressions);
+                sql.append(')');
+                break;
             case LIST:
-                return "FOR VALUES IN (" + inExpressions + ")";
+                sql.append("FOR VALUES IN (");
+                expressionPrinter.accept(inExpressions);
+                sql.append(')');
+                break;
             case HASH:
-                return "FOR VALUES WITH (MODULUS " + modulus + ", REMAINDER " + remainder + ")";
+                sql.append("FOR VALUES WITH (MODULUS ");
+                expressionPrinter.accept(modulus);
+                sql.append(", REMAINDER ");
+                expressionPrinter.accept(remainder);
+                sql.append(')');
+                break;
             case DEFAULT:
-                return "DEFAULT";
+                sql.append("DEFAULT");
+                break;
             default:
-                return "";
+                break;
         }
     }
 }

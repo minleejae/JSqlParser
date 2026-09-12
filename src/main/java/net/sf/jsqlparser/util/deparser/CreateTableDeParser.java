@@ -105,7 +105,10 @@ public class CreateTableDeParser extends AbstractDeParser<CreateTable> {
         }
 
         if (createTable.getPartitionBound() != null) {
-            builder.append(' ').append(createTable.getPartitionBound());
+            builder.append(' ');
+            createTable.getPartitionBound().appendTo(builder,
+                    expression -> expression.accept(statementDeParser.getExpressionDeParser(),
+                            null));
         }
 
         params = PlainSelect.getStringList(createTable.getTableOptionsStrings(), false, false);
@@ -113,7 +116,10 @@ public class CreateTableDeParser extends AbstractDeParser<CreateTable> {
             builder.append(' ').append(params);
         }
         if (createTable.getPartitioning() != null) {
-            builder.append(' ').append(createTable.getPartitioning());
+            builder.append(' ');
+            createTable.getPartitioning().appendTo(builder,
+                    expression -> expression.accept(statementDeParser.getExpressionDeParser(),
+                            null));
         }
 
         if (createTable.getRowMovement() != null) {

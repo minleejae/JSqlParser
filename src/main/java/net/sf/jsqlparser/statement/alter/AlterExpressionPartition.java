@@ -14,6 +14,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
+import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.create.table.PartitionBound;
 import net.sf.jsqlparser.statement.create.table.PartitionDefinition;
@@ -292,6 +294,15 @@ public class AlterExpressionPartition extends AlterExpression {
 
     @Override
     protected void appendBody(StringBuilder b) {
+        appendBody(b, b::append);
+    }
+
+    public void appendTo(StringBuilder b, Consumer<Expression> expressionPrinter) {
+        appendBody(b, expressionPrinter);
+        appendCommonTail(b);
+    }
+
+    private void appendBody(StringBuilder b, Consumer<Expression> expressionPrinter) {
         switch (getOperation()) {
             case ADD_PARTITION:
                 b.append("ADD PARTITION ")
@@ -302,8 +313,12 @@ public class AlterExpressionPartition extends AlterExpression {
                         .append(PlainSelect.getStringList(getPartitionNames()));
                 break;
             case ATTACH_PARTITION:
-                b.append("ATTACH PARTITION ").append(partitionTable).append(" ")
-                        .append(partitionBound);
+                b.append("ATTACH PARTITION ").append(partitionTable).append(' ');
+                if (partitionBound == null) {
+                    b.append("null");
+                } else {
+                    partitionBound.appendTo(b, expressionPrinter);
+                }
                 break;
             case DETACH_PARTITION:
                 b.append("DETACH PARTITION ").append(partitionTable);
@@ -313,7 +328,7 @@ public class AlterExpressionPartition extends AlterExpression {
                 break;
             case PARTITION_BY:
                 if (partitioning != null) {
-                    b.append(partitioning);
+                    partitioning.appendTo(b, expressionPrinter);
                 } else {
                     toStringPartition(b);
                 }

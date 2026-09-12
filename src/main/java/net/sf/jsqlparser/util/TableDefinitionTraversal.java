@@ -15,6 +15,7 @@ import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.LikeClause;
 import net.sf.jsqlparser.statement.alter.AlterExpression;
+import net.sf.jsqlparser.statement.alter.AlterExpressionPartition;
 import net.sf.jsqlparser.statement.alter.AlterExpressionPrimaryKey;
 import net.sf.jsqlparser.statement.create.index.CreateIndex;
 import net.sf.jsqlparser.statement.create.table.CheckConstraint;
@@ -26,6 +27,8 @@ import net.sf.jsqlparser.statement.create.table.ExcludeConstraint;
 import net.sf.jsqlparser.statement.create.table.ForeignKeyIndex;
 import net.sf.jsqlparser.statement.create.table.Index;
 import net.sf.jsqlparser.statement.create.table.TableElement;
+import net.sf.jsqlparser.statement.create.table.TablePartitioning;
+import net.sf.jsqlparser.statement.create.table.PartitionBound;
 
 /** Traverses structured table definitions without interpreting legacy raw column options. */
 public final class TableDefinitionTraversal {
@@ -50,6 +53,26 @@ public final class TableDefinitionTraversal {
         if (action.getIndex() != null) {
             visit(action.getIndex(), expressions, tables);
         }
+        if (action instanceof AlterExpressionPartition) {
+            AlterExpressionPartition partition = (AlterExpressionPartition) action;
+            switch (partition.getOperation()) {
+                case ATTACH_PARTITION:
+                    accept(partition.getPartitionTable(), tables);
+                    visit(partition.getPartitionBound(), expressions);
+                    break;
+                case DETACH_PARTITION:
+                    accept(partition.getPartitionTable(), tables);
+                    break;
+                case EXCHANGE_PARTITION:
+                    accept(partition.getExchangeTable(), tables);
+                    break;
+                case PARTITION_BY:
+                    visit(partition.getPartitioning(), expressions);
+                    break;
+                default:
+                    break;
+            }
+        }
         if (action instanceof AlterExpressionPrimaryKey) {
             AlterExpressionPrimaryKey primaryKey = (AlterExpressionPrimaryKey) action;
             if (primaryKey.isUsingHash()) {
@@ -72,6 +95,45 @@ public final class TableDefinitionTraversal {
         }
         accept(table.getTrailingLikeTable(), tables);
         accept(table.getPartitionOf(), tables);
+        visit(table.getPartitioning(), expressions);
+        visit(table.getPartitionBound(), expressions);
+    }
+
+    /** Visits the active partition key and any subpartition key. Raw bounds remain opaque. */
+    public static void visit(TablePartitioning partitioning, Consumer<Expression> expressions) {
+        if (partitioning == null) {
+            return;
+        }
+        if (partitioning.getExpression() != null) {
+            accept(partitioning.getExpression(), expressions);
+        } else if (partitioning.getExpressionList() != null) {
+            accept(partitioning.getExpressionList(), expressions);
+        } else {
+            accept(partitioning.getColumns(), expressions);
+        }
+        visit(partitioning.getSubPartitioning(), expressions);
+    }
+
+    /** Visits expressions belonging to the selected PostgreSQL bound type. */
+    public static void visit(PartitionBound bound, Consumer<Expression> expressions) {
+        if (bound == null || bound.getType() == null) {
+            return;
+        }
+        switch (bound.getType()) {
+            case RANGE:
+                accept(bound.getFromExpressions(), expressions);
+                accept(bound.getToExpressions(), expressions);
+                break;
+            case LIST:
+                accept(bound.getInExpressions(), expressions);
+                break;
+            case HASH:
+                accept(bound.getModulus(), expressions);
+                accept(bound.getRemainder(), expressions);
+                break;
+            default:
+                break;
+        }
     }
 
     public static void visit(TableElement element, Consumer<Expression> expressions,

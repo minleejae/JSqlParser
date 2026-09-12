@@ -15,6 +15,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.schema.Column;
@@ -256,14 +257,20 @@ public class TablePartitioning implements Serializable {
 
     @Override
     public String toString() {
-        StringBuilder builder = new StringBuilder("PARTITION BY ");
-        appendMethod(builder);
+        StringBuilder builder = new StringBuilder();
+        appendTo(builder, builder::append);
+        return builder.toString();
+    }
+
+    public void appendTo(StringBuilder builder, Consumer<Expression> expressionPrinter) {
+        builder.append("PARTITION BY ");
+        appendMethod(builder, expressionPrinter);
         if (partitions != null) {
             builder.append(" PARTITIONS ").append(partitions);
         }
         if (subPartitioning != null) {
             builder.append(" SUBPARTITION BY ");
-            subPartitioning.appendMethod(builder);
+            subPartitioning.appendMethod(builder, expressionPrinter);
             if (subPartitioning.getPartitions() != null) {
                 builder.append(" SUBPARTITIONS ").append(subPartitioning.getPartitions());
             }
@@ -275,10 +282,9 @@ public class TablePartitioning implements Serializable {
         if (partitionOptions != null && !partitionOptions.isEmpty()) {
             builder.append(" ").append(PlainSelect.getStringList(partitionOptions, false, false));
         }
-        return builder.toString();
     }
 
-    private void appendMethod(StringBuilder builder) {
+    private void appendMethod(StringBuilder builder, Consumer<Expression> expressionPrinter) {
         if (linear) {
             builder.append("LINEAR ");
         }
@@ -291,11 +297,17 @@ public class TablePartitioning implements Serializable {
             builder.append(" COLUMNS");
         }
         if (expression != null) {
-            builder.append(" (").append(expression).append(")");
+            builder.append(" (");
+            expressionPrinter.accept(expression);
+            builder.append(')');
         } else if (expressionList != null) {
-            builder.append(" (").append(expressionList).append(")");
+            builder.append(" (");
+            expressionPrinter.accept(expressionList);
+            builder.append(')');
         } else if (columns != null) {
-            builder.append(" ").append(PlainSelect.getStringList(columns, true, true));
+            builder.append(" (");
+            expressionPrinter.accept(columns);
+            builder.append(')');
         }
     }
 }
