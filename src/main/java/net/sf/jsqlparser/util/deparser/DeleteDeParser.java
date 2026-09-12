@@ -109,9 +109,7 @@ public class DeleteDeParser extends AbstractDeParser<Delete> {
             builder.append(delete.getOption());
         }
 
-        if (delete.getReturningClause() != null) {
-            delete.getReturningClause().appendTo(builder);
-        }
+        deparseReturningClause(delete.getReturningClause(), expressionVisitor);
 
     }
 
