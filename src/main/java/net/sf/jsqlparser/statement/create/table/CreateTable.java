@@ -70,15 +70,19 @@ public class CreateTable implements Statement {
     }
 
     /**
-     * @return a list of {@link ColumnDefinition}s of this table.
+     * @return a list of {@link ColumnDefinition}s of this table. When ordered table elements are
+     *         present, this is a mutable view of the column definitions in that list.
      */
     public List<ColumnDefinition> getColumnDefinitions() {
         return columnDefinitions;
     }
 
     public void setColumnDefinitions(List<ColumnDefinition> list) {
-        columnDefinitions = list;
-        tableElements = null;
+        if (tableElements == null) {
+            columnDefinitions = list;
+        } else {
+            TableElementList.replace(tableElements, ColumnDefinition.class, list);
+        }
     }
 
     public List<String> getColumns() {
@@ -137,15 +141,19 @@ public class CreateTable implements Statement {
     /**
      * @return a list of {@link Index}es (for example "PRIMARY KEY") of this table.<br>
      *         Indexes created with column definitions (as in mycol INT PRIMARY KEY) are not
-     *         inserted into this list.
+     *         inserted into this list. When ordered table elements are present, this is a mutable
+     *         view of their indexes.
      */
     public List<Index> getIndexes() {
         return indexes;
     }
 
     public void setIndexes(List<Index> list) {
-        indexes = list;
-        tableElements = null;
+        if (tableElements == null) {
+            indexes = list;
+        } else {
+            TableElementList.replace(tableElements, Index.class, list);
+        }
     }
 
     /**
@@ -162,15 +170,8 @@ public class CreateTable implements Statement {
             indexes = null;
             return;
         }
-        columnDefinitions = new ArrayList<>();
-        indexes = new ArrayList<>();
-        for (TableElement element : tableElements) {
-            if (element instanceof ColumnDefinition) {
-                columnDefinitions.add((ColumnDefinition) element);
-            } else if (element instanceof Index) {
-                indexes.add((Index) element);
-            }
-        }
+        columnDefinitions = new TableElementList<>(tableElements, ColumnDefinition.class);
+        indexes = new TableElementList<>(tableElements, Index.class);
     }
 
     /** Returns table elements of a requested AST type while preserving their declaration order. */
@@ -334,7 +335,7 @@ public class CreateTable implements Statement {
             b.append(" ");
             b.append(PlainSelect.getStringList(columns, true, true));
         }
-        if (tableElements != null && !tableElements.isEmpty()) {
+        if (tableElements != null) {
             b.append(" (");
             b.append(PlainSelect.getStringList(tableElements, true, false));
             b.append(")");

@@ -72,7 +72,7 @@ public class CreateTableDeParser extends AbstractDeParser<CreateTable> {
             }
             builder.append(")");
         }
-        if (createTable.getTableElements() != null && !createTable.getTableElements().isEmpty()) {
+        if (createTable.getTableElements() != null) {
             builder.append(" (");
             for (Iterator<TableElement> iter = createTable.getTableElements().iterator(); iter
                     .hasNext();) {
