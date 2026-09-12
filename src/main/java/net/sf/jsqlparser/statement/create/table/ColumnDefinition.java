@@ -14,6 +14,7 @@ import net.sf.jsqlparser.statement.select.PlainSelect;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -50,6 +51,11 @@ public class ColumnDefinition implements ImportColumn, TableElement, Serializabl
         this.columnSpecs = columnSpecs;
     }
 
+    /**
+     * Returns raw specifications, or a token snapshot when structured options are present. Use the
+     * option API or {@link #addColumnSpecs(Collection)} to append without discarding structured
+     * references and constraints.
+     */
     public List<String> getColumnSpecs() {
         if (columnOptions != null) {
             List<String> tokens = new ArrayList<>();
@@ -76,6 +82,7 @@ public class ColumnDefinition implements ImportColumn, TableElement, Serializabl
 
     public void setColumnOptions(List<ColumnOption> columnOptions) {
         this.columnOptions = columnOptions;
+        this.columnSpecs = null;
     }
 
     public boolean isSerialDefaultValue() {
@@ -102,6 +109,9 @@ public class ColumnDefinition implements ImportColumn, TableElement, Serializabl
     public ColumnDefinition addColumnOptions(ColumnOption... columnOptions) {
         List<ColumnOption> collection =
                 Optional.ofNullable(getColumnOptions()).orElseGet(ArrayList::new);
+        if (this.columnOptions == null && columnSpecs != null && !columnSpecs.isEmpty()) {
+            collection.add(ColumnOption.raw(new ArrayList<>(columnSpecs)));
+        }
         Collections.addAll(collection, columnOptions);
         return withColumnOptions(collection);
     }
@@ -153,12 +163,16 @@ public class ColumnDefinition implements ImportColumn, TableElement, Serializabl
     }
 
     public ColumnDefinition addColumnSpecs(String... columnSpecs) {
-        List<String> collection = Optional.ofNullable(getColumnSpecs()).orElseGet(ArrayList::new);
-        Collections.addAll(collection, columnSpecs);
-        return this.withColumnSpecs(collection);
+        return addColumnSpecs(Arrays.asList(columnSpecs));
     }
 
     public ColumnDefinition addColumnSpecs(Collection<String> columnSpecs) {
+        if (columnOptions != null) {
+            if (!columnSpecs.isEmpty()) {
+                columnOptions.add(ColumnOption.raw(new ArrayList<>(columnSpecs)));
+            }
+            return this;
+        }
         List<String> collection = Optional.ofNullable(getColumnSpecs()).orElseGet(ArrayList::new);
         collection.addAll(columnSpecs);
         return this.withColumnSpecs(collection);
