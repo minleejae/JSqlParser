@@ -11,9 +11,9 @@ package net.sf.jsqlparser.statement.create.table;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Consumer;
 
 import net.sf.jsqlparser.expression.Expression;
-import net.sf.jsqlparser.statement.select.PlainSelect;
 
 public class ExcludeConstraint extends Index {
 
@@ -33,8 +33,7 @@ public class ExcludeConstraint extends Index {
     }
 
     @Override
-    public String toString() {
-        StringBuilder exclusionStatement = new StringBuilder();
+    public void appendTo(StringBuilder exclusionStatement, Consumer<Expression> expressionPrinter) {
         if (getName() != null) {
             exclusionStatement.append("CONSTRAINT ").append(getName()).append(' ');
         }
@@ -43,15 +42,16 @@ public class ExcludeConstraint extends Index {
             exclusionStatement.append(" USING ").append(getUsing());
         }
         if (getColumns() != null) {
-            exclusionStatement.append(' ')
-                    .append(PlainSelect.getStringList(getColumns(), true, true));
+            exclusionStatement.append(' ');
+            appendColumnsTo(exclusionStatement, expressionPrinter);
         }
-        appendConstraintOptionsTo(exclusionStatement);
+        appendConstraintOptionsTo(exclusionStatement, expressionPrinter);
         if (expression != null) {
-            exclusionStatement.append(" WHERE (").append(expression).append(')');
+            exclusionStatement.append(" WHERE (");
+            expressionPrinter.accept(expression);
+            exclusionStatement.append(')');
         }
         appendConstraintAttributesTo(exclusionStatement);
-        return exclusionStatement.toString();
     }
 
     public ExcludeConstraint withExpression(Expression expression) {

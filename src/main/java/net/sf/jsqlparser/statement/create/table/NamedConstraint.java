@@ -11,6 +11,8 @@ package net.sf.jsqlparser.statement.create.table;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Consumer;
+import net.sf.jsqlparser.expression.Expression;
 
 import net.sf.jsqlparser.statement.select.PlainSelect;
 
@@ -81,32 +83,34 @@ public class NamedConstraint extends Index {
     }
 
     @Override
-    public String toString() {
+    public void appendTo(StringBuilder sql, Consumer<Expression> expressionPrinter) {
         String idxSpecText = PlainSelect.getStringList(getIndexSpec(), false, false);
         String keyword = getIndexKeyword() != null
                 && !getType().toUpperCase(java.util.Locale.ROOT)
                         .endsWith(getIndexKeyword().toUpperCase(java.util.Locale.ROOT))
                                 ? " " + getIndexKeyword()
                                 : "";
-        String tail = getType()
-                + nullsDistinctClause()
-                + keyword
-                + clusteringClause()
-                + (indexName != null ? " " + indexName : "")
-                + (getUsing() != null ? " USING " + getUsing() : "")
-                + (getColumns() == null ? ""
-                        : " " + PlainSelect.getStringList(getColumnsNames(), true, true))
-                +
-                (!"".equals(idxSpecText) ? " " + idxSpecText : "");
-        StringBuilder sql = new StringBuilder();
         appendConstraintPrefixTo(sql);
-        sql.append(tail);
-        appendConstraintOptionsTo(sql);
+        sql.append(getType()).append(nullsDistinctClause()).append(keyword)
+                .append(clusteringClause());
+        if (indexName != null) {
+            sql.append(' ').append(indexName);
+        }
+        if (getUsing() != null) {
+            sql.append(" USING ").append(getUsing());
+        }
+        if (getColumns() != null) {
+            sql.append(' ');
+            appendColumnsTo(sql, expressionPrinter);
+        }
+        if (!idxSpecText.isEmpty()) {
+            sql.append(' ').append(idxSpecText);
+        }
+        appendConstraintOptionsTo(sql, expressionPrinter);
         if (getKind() != Kind.FOREIGN_KEY) {
             appendConstraintSuffixTo(sql);
             appendConstraintAttributesTo(sql);
         }
-        return sql.toString();
     }
 
     public NamedConstraint withIndexName(String indexName) {

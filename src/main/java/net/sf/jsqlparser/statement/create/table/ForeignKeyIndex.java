@@ -20,6 +20,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.function.Consumer;
+import net.sf.jsqlparser.expression.Expression;
 import java.util.Optional;
 import java.util.Set;
 
@@ -165,8 +167,9 @@ public class ForeignKeyIndex extends NamedConstraint {
     }
 
     @Override
-    public String toString() {
-        StringBuilder b = new StringBuilder(super.toString()).append(" ");
+    public void appendTo(StringBuilder b, Consumer<Expression> expressionPrinter) {
+        super.appendTo(b, expressionPrinter);
+        b.append(' ');
         if (reference != null) {
             b.append(reference);
         } else {
@@ -176,7 +179,6 @@ public class ForeignKeyIndex extends NamedConstraint {
         }
         appendConstraintSuffixTo(b);
         appendConstraintAttributesTo(b);
-        return b.toString();
     }
 
     public ForeignKeyIndex withTable(Table table) {

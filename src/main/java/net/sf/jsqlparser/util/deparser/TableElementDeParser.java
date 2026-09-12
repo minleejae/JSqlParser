@@ -9,13 +9,9 @@
  */
 package net.sf.jsqlparser.util.deparser;
 
-import java.util.Iterator;
 import net.sf.jsqlparser.expression.ExpressionVisitor;
-import net.sf.jsqlparser.statement.create.table.CheckConstraint;
 import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
 import net.sf.jsqlparser.statement.create.table.ColumnOption;
-import net.sf.jsqlparser.statement.create.table.DefaultConstraint;
-import net.sf.jsqlparser.statement.create.table.ExcludeConstraint;
 import net.sf.jsqlparser.statement.create.table.Index;
 import net.sf.jsqlparser.statement.create.table.TableElement;
 
@@ -31,13 +27,9 @@ public class TableElementDeParser extends AbstractDeParser<TableElement> {
 
     @Override
     public void deParse(TableElement element) {
-        if (element instanceof DefaultConstraint) {
-            ((DefaultConstraint) element).appendTo(builder,
+        if (element instanceof Index) {
+            ((Index) element).appendTo(builder,
                     expression -> expression.accept(expressionVisitor, null));
-        } else if (element instanceof ExcludeConstraint) {
-            deParseExclude((ExcludeConstraint) element);
-        } else if (element instanceof CheckConstraint) {
-            deParseCheck((CheckConstraint) element);
         } else if (element instanceof ColumnDefinition
                 && ((ColumnDefinition) element).getColumnOptions() != null) {
             deParseColumn((ColumnDefinition) element);
@@ -64,48 +56,4 @@ public class TableElementDeParser extends AbstractDeParser<TableElement> {
         }
     }
 
-    private void deParseExclude(ExcludeConstraint constraint) {
-        if (constraint.getName() != null) {
-            builder.append("CONSTRAINT ").append(constraint.getName()).append(' ');
-        }
-        builder.append("EXCLUDE");
-        if (constraint.getUsing() != null) {
-            builder.append(" USING ").append(constraint.getUsing());
-        }
-        if (constraint.getColumns() != null) {
-            builder.append(" (");
-            for (Iterator<Index.ColumnParams> iterator =
-                    constraint.getColumns().iterator(); iterator.hasNext();) {
-                iterator.next().appendTo(builder,
-                        expression -> expression.accept(expressionVisitor, null));
-                if (iterator.hasNext()) {
-                    builder.append(", ");
-                }
-            }
-            builder.append(')');
-        }
-        constraint.appendConstraintOptionsTo(builder);
-        if (constraint.getExpression() != null) {
-            builder.append(" WHERE (");
-            constraint.getExpression().accept(expressionVisitor, null);
-            builder.append(')');
-        }
-        constraint.appendConstraintAttributesTo(builder);
-    }
-
-    private void deParseCheck(CheckConstraint constraint) {
-        constraint.appendConstraintPrefixTo(builder);
-        builder.append("CHECK (");
-        if (constraint.getExpression() != null) {
-            constraint.getExpression().accept(expressionVisitor, null);
-        } else {
-            builder.append("null");
-        }
-        builder.append(')');
-        if (constraint.getEnforced() != null) {
-            builder.append(constraint.getEnforced() ? " ENFORCED" : " NOT ENFORCED");
-        }
-        constraint.appendConstraintSuffixTo(builder);
-        constraint.appendConstraintAttributesTo(builder);
-    }
 }

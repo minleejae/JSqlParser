@@ -111,11 +111,17 @@ public class Index implements TableElement, Serializable {
     }
 
     public void appendConstraintOptionsTo(StringBuilder sql) {
+        appendConstraintOptionsTo(sql, sql::append);
+    }
+
+    public void appendConstraintOptionsTo(StringBuilder sql,
+            Consumer<Expression> expressionPrinter) {
         if (includeColumns != null) {
             sql.append(" INCLUDE ").append(PlainSelect.getStringList(includeColumns, true, true));
         }
         if (storageParameters != null) {
-            sql.append(" WITH ").append(PlainSelect.getStringList(storageParameters, true, true));
+            sql.append(" WITH ");
+            Option.appendListTo(sql, storageParameters, expressionPrinter);
         }
         if (tableSpace != null) {
             sql.append(" USING INDEX TABLESPACE ").append(tableSpace);
@@ -283,31 +289,49 @@ public class Index implements TableElement, Serializable {
 
     @Override
     public String toString() {
+        StringBuilder sql = new StringBuilder();
+        appendTo(sql, sql::append);
+        return sql.toString();
+    }
+
+    /** Renders index definitions through the supplied expression writer. */
+    public void appendTo(StringBuilder sql, Consumer<Expression> expressionPrinter) {
         String idxSpecText = PlainSelect.getStringList(idxSpec, false, false);
         String keyword = indexKeyword != null
                 && (type == null || !type.toUpperCase(java.util.Locale.ROOT)
                         .endsWith(indexKeyword.toUpperCase(java.util.Locale.ROOT)))
                                 ? " " + indexKeyword
                                 : "";
-        String head =
-                (type != null ? type : "") +
-                        keyword +
-                        (!name.isEmpty() ? " " + getName() : "") +
-                        (using != null ? " USING " + using : "");
-
-        String tail = (columns != null && !columns.isEmpty()
-                ? PlainSelect.getStringList(columns, true, true)
-                : "")
-                + (!idxSpecText.isEmpty() ? " " + idxSpecText : "");
-
-        StringBuilder sql = new StringBuilder(head).append(nullsDistinctClause())
-                .append(clusteringClause());
-        if (!tail.isEmpty()) {
-            sql.append(' ').append(tail);
+        sql.append(type != null ? type : "").append(keyword);
+        if (!name.isEmpty()) {
+            sql.append(' ').append(getName());
         }
-        appendConstraintOptionsTo(sql);
+        if (using != null) {
+            sql.append(" USING ").append(using);
+        }
+        sql.append(nullsDistinctClause()).append(clusteringClause());
+        boolean hasColumns = columns != null && !columns.isEmpty();
+        if (hasColumns) {
+            sql.append(' ');
+            appendColumnsTo(sql, expressionPrinter);
+        }
+        if (!idxSpecText.isEmpty()) {
+            sql.append(hasColumns ? " " : "  ").append(idxSpecText);
+        }
+        appendConstraintOptionsTo(sql, expressionPrinter);
         appendConstraintAttributesTo(sql);
-        return sql.toString();
+    }
+
+    /** Appends a parenthesized list of keys, including expression keys and operator options. */
+    protected void appendColumnsTo(StringBuilder sql, Consumer<Expression> expressionPrinter) {
+        sql.append('(');
+        for (int i = 0; i < columns.size(); i++) {
+            if (i > 0) {
+                sql.append(", ");
+            }
+            columns.get(i).appendTo(sql, expressionPrinter);
+        }
+        sql.append(')');
     }
 
     public Index withType(String type) {

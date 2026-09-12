@@ -11,6 +11,7 @@ package net.sf.jsqlparser.statement.create.table;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Consumer;
 
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.schema.Table;
@@ -52,16 +53,20 @@ public class CheckConstraint extends NamedConstraint {
     }
 
     @Override
-    public String toString() {
-        StringBuilder b = new StringBuilder();
+    public void appendTo(StringBuilder b, Consumer<Expression> expressionPrinter) {
         appendConstraintPrefixTo(b);
-        b.append("CHECK (").append(expression).append(")");
+        b.append("CHECK (");
+        if (expression == null) {
+            b.append("null");
+        } else {
+            expressionPrinter.accept(expression);
+        }
+        b.append(')');
         if (enforced != null) {
             b.append(enforced ? " ENFORCED" : " NOT ENFORCED");
         }
         appendConstraintSuffixTo(b);
         appendConstraintAttributesTo(b);
-        return b.toString();
     }
 
     public CheckConstraint withTable(Table table) {
