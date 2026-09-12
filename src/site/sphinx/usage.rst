@@ -794,6 +794,12 @@ The ordered ``OnOffOption`` list and shared ``isOn()`` value are editable;
 ``setOnOffOptions()`` replaces generic assignments and their scope. Both SQL
 renderers share statement punctuation while generic assignments retain expression
 visitor support. Parsing a SET directive records it without changing lexer settings.
+``Dialect.SQLSERVER`` enables ``INSERT BULK table (name type, ...) WITH (...)``.
+``InsertBulk`` exposes the target table, existing ``ColumnDefinition`` models,
+and ordered typed options, including ``ROWS_PER_BATCH`` and ``ORDER`` keys.
+The SQL declaration is preserved; the following binary bulk-load data stream
+is outside the SQL parser. Visitors and deparsers traverse option values and
+ordering expressions. Validation uses the ``insertBulk`` capability.
 
 With ``Dialect.SQLSERVER``, ``PRIMARY KEY NONCLUSTERED (id)`` and
 ``UNIQUE CLUSTERED (id)`` store their clustering option in ``Index.getClustering()``
