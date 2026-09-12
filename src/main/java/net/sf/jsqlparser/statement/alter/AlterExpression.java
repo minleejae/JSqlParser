@@ -11,6 +11,7 @@ package net.sf.jsqlparser.statement.alter;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.AbstractList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -505,20 +506,98 @@ public class AlterExpression implements Serializable {
         this.usingIfExists = usingIfExists;
     }
 
+    /** Returns a live view when this action has a structured PRIMARY_KEY definition. */
     public List<String> getPkColumns() {
-        return pkColumns;
+        return hasKeyIndex(Index.Kind.PRIMARY_KEY) ? new KeyColumnNames(index) : pkColumns;
     }
 
     public void setPkColumns(List<String> pkColumns) {
-        this.pkColumns = pkColumns;
+        if (hasKeyIndex(Index.Kind.PRIMARY_KEY)) {
+            replaceKeyColumns(pkColumns);
+            this.pkColumns = null;
+        } else {
+            this.pkColumns = pkColumns;
+        }
     }
 
+    /** Returns a live view when this action has a structured UNIQUE definition. */
     public List<String> getUkColumns() {
-        return ukColumns;
+        return hasKeyIndex(Index.Kind.UNIQUE) ? new KeyColumnNames(index) : ukColumns;
     }
 
     public void setUkColumns(List<String> ukColumns) {
-        this.ukColumns = ukColumns;
+        if (hasKeyIndex(Index.Kind.UNIQUE)) {
+            replaceKeyColumns(ukColumns);
+            this.ukColumns = null;
+        } else {
+            this.ukColumns = ukColumns;
+        }
+    }
+
+    private boolean hasKeyIndex(Index.Kind kind) {
+        return index != null && index.getKind() == kind;
+    }
+
+    private void replaceKeyColumns(List<String> names) {
+        List<Index.ColumnParams> replacement = new ArrayList<>();
+        if (names != null) {
+            List<Index.ColumnParams> previous = index.getColumns();
+            for (int i = 0; i < names.size(); i++) {
+                String name = names.get(i);
+                replacement.add(previous != null && i < previous.size()
+                        && previous.get(i).toString().equals(name) ? previous.get(i)
+                                : new Index.ColumnParams(name));
+            }
+        }
+        index.setColumns(replacement);
+    }
+
+    /** Adapts the legacy mutable name list without copying structured expressions to strings. */
+    private static class KeyColumnNames extends AbstractList<String> {
+        private final Index index;
+
+        KeyColumnNames(Index index) {
+            this.index = index;
+        }
+
+        @Override
+        public String get(int position) {
+            return index.getColumns().get(position).toString();
+        }
+
+        @Override
+        public int size() {
+            return index.getColumns() == null ? 0 : index.getColumns().size();
+        }
+
+        @Override
+        public String set(int position, String name) {
+            String previous = get(position);
+            if (!previous.equals(name)) {
+                List<Index.ColumnParams> columns = new ArrayList<>(index.getColumns());
+                columns.set(position, new Index.ColumnParams(name));
+                index.setColumns(columns);
+            }
+            return previous;
+        }
+
+        @Override
+        public void add(int position, String name) {
+            List<Index.ColumnParams> columns = index.getColumns() == null ? new ArrayList<>()
+                    : new ArrayList<>(index.getColumns());
+            columns.add(position, new Index.ColumnParams(name));
+            index.setColumns(columns);
+            modCount++;
+        }
+
+        @Override
+        public String remove(int position) {
+            List<Index.ColumnParams> columns = new ArrayList<>(index.getColumns());
+            String previous = columns.remove(position).toString();
+            index.setColumns(columns);
+            modCount++;
+            return previous;
+        }
     }
 
     public String getUkName() {
