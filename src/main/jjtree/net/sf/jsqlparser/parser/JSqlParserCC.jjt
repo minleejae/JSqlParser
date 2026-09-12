@@ -1547,6 +1547,45 @@ public class CCJSqlParser extends AbstractJSqlParser<CCJSqlParser> {
         return false;
     }
 
+    /** Keeps legacy ALTER key accessors populated from the common structured definition. */
+    private static void setAlterTableIndex(AlterExpression alterExp, Index index) {
+        alterExp.setIndex(index);
+        if (index.getKind() == Index.Kind.PRIMARY_KEY) {
+            alterExp.setPkColumns(index.getColumnsNames());
+        } else if (index.getKind() == Index.Kind.UNIQUE) {
+            alterExp.setUkColumns(index.getColumnsNames());
+            alterExp.setUkName(index instanceof NamedConstraint
+                    ? ((NamedConstraint) index).getIndexName() : index.getName());
+            alterExp.setUk(index.getType().toUpperCase(Locale.ROOT).contains("KEY"));
+            alterExp.setUkTypeSpecified(index.getIndexKeyword() != null);
+            for (String option : new ArrayList<String>(index.getIndexSpec())) {
+                if (option.toUpperCase(Locale.ROOT).startsWith("USING ")) {
+                    alterExp.addParameters("USING");
+                    alterExp.addParameters(option.substring("USING ".length()));
+                    index.getIndexSpec().remove(option);
+                } else if (option.toUpperCase(Locale.ROOT).startsWith("COMMENT ")) {
+                    index.setCommentText(option.substring("COMMENT ".length()));
+                    index.getIndexSpec().remove(option);
+                }
+            }
+        }
+        if (index instanceof ForeignKeyIndex) {
+            ForeignKeyIndex foreignKey = (ForeignKeyIndex) index;
+            alterExp.setFkColumns(foreignKey.getColumnsNames());
+            if (foreignKey.getTable() != null) {
+                alterExp.setFkSourceSchema(foreignKey.getTable().getSchemaName());
+                alterExp.setFkSourceTable(foreignKey.getTable().getName());
+            }
+            alterExp.setFkSourceColumns(foreignKey.getReferencedColumnNames());
+            for (ReferentialAction.Type type : ReferentialAction.Type.values()) {
+                ReferentialAction action = foreignKey.getReferentialAction(type);
+                if (action != null) {
+                    alterExp.setReferentialAction(action.getType(), action.getAction());
+                }
+            }
+        }
+    }
+
     private static boolean hasStructuredColumnOption(List<ColumnOption> options) {
         for (ColumnOption option : options) {
             if (option.getKind() != ColumnOption.Kind.OTHER) {
@@ -13155,6 +13194,11 @@ void PostgreSqlConstraintAttributes(Index index):
  * to {@link #TableIndexSpec(boolean)} so CREATE and ALTER expose the same structured AST.
  */
 Index CreateTableConstraint():
+{ Index index; }
+{ index=TableConstraint(true) { return index; } }
+
+/** Shared table-constraint body; index option boundaries depend on CREATE versus ALTER. */
+Index TableConstraint(boolean createContext):
 {
     String constraintName = null;
     Index index = null;
@@ -13163,13 +13207,13 @@ Index CreateTableConstraint():
 }
 {
     (
-        LOOKAHEAD({ isTableIndexAhead() }) index=TableIndexSpec(true)
+        LOOKAHEAD({ isTableIndexAhead() }) index=TableIndexSpec(createContext)
         |
         <K_CONSTRAINT>
         [ LOOKAHEAD({ !isTableIndexAhead() && getToken(1).kind != K_FOREIGN
                 && getToken(1).kind != K_CHECK && getToken(1).kind != K_EXCLUDE }) constraintName=RelObjectName() ]
         (
-            LOOKAHEAD({ isTableIndexAhead() }) index=TableIndexSpec(true) {
+            LOOKAHEAD({ isTableIndexAhead() }) index=TableIndexSpec(createContext) {
                 if (index instanceof NamedConstraint) {
                     ((NamedConstraint) index).setUseConstraintKeyword(true);
                     index.setName(constraintName);
@@ -13210,7 +13254,7 @@ ExcludeConstraint PostgreSqlExcludeConstraint():
 {
     <K_EXCLUDE>
     [ LOOKAHEAD(2) <K_USING> using=RelObjectName() { constraint.setUsing(using); } ]
-    [ "(" column=PostgreSqlExcludeElement() { columns.add(column); }
+    [ LOOKAHEAD(2) "(" column=PostgreSqlExcludeElement() { columns.add(column); }
         ( "," column=PostgreSqlExcludeElement() { columns.add(column); } )* ")"
         { constraint.setColumns(columns); } ]
     PostgreSqlConstraintOptions(constraint)
@@ -15415,27 +15459,15 @@ AlterExpression AlterExpressionAddAlterModify():
             alterExp.setIndex(index);
         }
         |
+        LOOKAHEAD({ alterExp.getOperation() == AlterOperation.ADD
+                && Dialect.POSTGRESQL.name().equals(getAsString(Feature.dialect))
+                && (getToken(1).kind == K_CONSTRAINT || getToken(1).kind == K_PRIMARY
+                    || getToken(1).kind == K_UNIQUE || getToken(1).kind == K_FOREIGN
+                    || getToken(1).kind == K_CHECK || getToken(1).kind == K_EXCLUDE) })
+        index=TableConstraint(false) { setAlterTableIndex(alterExp, index); }
+        |
         LOOKAHEAD({ isTableIndexAhead() }) index=TableIndexSpec(false) {
-            alterExp.setIndex(index);
-            if (index.getKind() == Index.Kind.PRIMARY_KEY) {
-                alterExp.setPkColumns(index.getColumnsNames());
-            } else if (index.getKind() == Index.Kind.UNIQUE) {
-                alterExp.setUkColumns(index.getColumnsNames());
-                alterExp.setUkName(index instanceof NamedConstraint
-                        ? ((NamedConstraint) index).getIndexName() : index.getName());
-                alterExp.setUk(index.getType().toUpperCase(Locale.ROOT).contains("KEY"));
-                alterExp.setUkTypeSpecified(index.getIndexKeyword() != null);
-                for (String option : new ArrayList<String>(index.getIndexSpec())) {
-                    if (option.toUpperCase(Locale.ROOT).startsWith("USING ")) {
-                        alterExp.addParameters("USING");
-                        alterExp.addParameters(option.substring("USING ".length()));
-                        index.getIndexSpec().remove(option);
-                    } else if (option.toUpperCase(Locale.ROOT).startsWith("COMMENT ")) {
-                        index.setCommentText(option.substring("COMMENT ".length()));
-                        index.getIndexSpec().remove(option);
-                    }
-                }
-            }
+            setAlterTableIndex(alterExp, index);
         }
         constraints=AlterExpressionConstraintState() { alterExp.setConstraints(constraints); }
         [ AlterExpressionUsingIndex(alterExp) ]
@@ -15485,21 +15517,10 @@ AlterExpression AlterExpressionAddAlterModify():
         |
         // Standalone FK now uses ForeignKeyIndex, same as CONSTRAINT FK
         (
-            { ForeignKeyIndex fkIndex; ReferentialAction ra; }
+            { ForeignKeyIndex fkIndex; }
             fkIndex = ForeignKeySpec(null)
             {
-                alterExp.setIndex(fkIndex);
-                // backward compat: populate deprecated FK fields from ForeignKeyIndex
-                alterExp.setFkColumns(fkIndex.getColumnsNames());
-                if (fkIndex.getTable() != null) {
-                    alterExp.setFkSourceSchema(fkIndex.getTable().getSchemaName());
-                    alterExp.setFkSourceTable(fkIndex.getTable().getName());
-                }
-                alterExp.setFkSourceColumns(fkIndex.getReferencedColumnNames());
-                ra = fkIndex.getReferentialAction(ReferentialAction.Type.DELETE);
-                if (ra != null) { alterExp.setReferentialAction(ra.getType(), ra.getAction()); }
-                ra = fkIndex.getReferentialAction(ReferentialAction.Type.UPDATE);
-                if (ra != null) { alterExp.setReferentialAction(ra.getType(), ra.getAction()); }
+                setAlterTableIndex(alterExp, fkIndex);
             }
         )
         |
