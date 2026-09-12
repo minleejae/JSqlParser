@@ -79,7 +79,6 @@ import net.sf.jsqlparser.statement.select.Top;
 import net.sf.jsqlparser.statement.select.UnPivot;
 import net.sf.jsqlparser.statement.select.Values;
 import net.sf.jsqlparser.statement.select.WithItem;
-import net.sf.jsqlparser.statement.update.UpdateSet;
 
 @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
 public class SelectDeParser extends AbstractDeParser<PlainSelect>
@@ -1159,9 +1158,11 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
 
     @Override
     public StringBuilder visit(LimitPipeOperator limit, Void context) {
-        builder.append("|> ").append("LIMIT ").append(limit.getLimitExpression());
+        builder.append("|> LIMIT ");
+        limit.getLimitExpression().accept(expressionVisitor, context);
         if (limit.getOffsetExpression() != null) {
-            builder.append(" OFFSET ").append(limit.getOffsetExpression());
+            builder.append(" OFFSET ");
+            limit.getOffsetExpression().accept(expressionVisitor, context);
         }
         return builder;
     }
@@ -1206,7 +1207,8 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
 
         int i = 0;
         for (SelectItem<?> selectItem : select.getSelectItems()) {
-            builder.append(i++ > 0 ? ", " : " ").append(selectItem);
+            builder.append(i++ > 0 ? ", " : " ");
+            selectItem.accept(this, context);
         }
         builder.append("\n");
         return builder;
@@ -1214,10 +1216,10 @@ public class SelectDeParser extends AbstractDeParser<PlainSelect>
 
     @Override
     public StringBuilder visit(SetPipeOperator set, Void context) {
-        builder.append("|> ").append("SET");
-        int i = 0;
-        for (UpdateSet updateSet : set.getUpdateSets()) {
-            builder.append(i++ > 0 ? ", " : " ").append(updateSet);
+        builder.append("|> SET");
+        if (!set.getUpdateSets().isEmpty()) {
+            builder.append(' ');
+            deparseUpdateSets(set.getUpdateSets(), builder, expressionVisitor);
         }
         builder.append("\n");
         return builder;
