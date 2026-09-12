@@ -562,7 +562,8 @@ public class AlterExpression implements Serializable {
 
         @Override
         public String get(int position) {
-            return index.getColumns().get(position).toString();
+            Index.ColumnParams column = index.getColumns().get(position);
+            return column.toString();
         }
 
         @Override
