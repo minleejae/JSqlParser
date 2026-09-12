@@ -16382,19 +16382,8 @@ PrivilegeTarget.Kind AccessObjectKind(boolean plural):
 }
 
 RoutineReference.Argument AccessRoutineArgument():
-{ RoutineReference.Argument result = new RoutineReference.Argument(); String name; Token mode; ColDataType type; }
-{
-    [
-        LOOKAHEAD({ isAccessKeywordAhead("IN") || isAccessKeywordAhead("OUT") || isAccessKeywordAhead("INOUT") || isAccessKeywordAhead("VARIADIC") })
-        ( <K_IN> { result.setMode(RoutineReference.Argument.Mode.IN); }
-          | mode=<S_IDENTIFIER> { result.setMode(accessEnum(RoutineReference.Argument.Mode.class, mode.image)); } )
-    ]
-    (
-        LOOKAHEAD(ColDataType() ("," | ")")) type=ColDataType()
-        | name=RelObjectName() { result.setName(name); } type=ColDataType()
-    )
-    { result.setDataType(type); return result; }
-}
+{ RoutineReference.Argument argument; }
+{ argument=RoutineArgument(false) { return argument; } }
 
 RoutineReference AccessRoutine():
 { RoutineReference result = new RoutineReference(); String name; RoutineReference.Argument argument; List<RoutineReference.Argument> arguments; }
@@ -17171,18 +17160,30 @@ CreateExtension CreateExtension():
 }
 
 RoutineReference.Argument RoutineSignatureArgument():
+{ RoutineReference.Argument argument; }
+{ argument=RoutineArgument(true) { return argument; } }
+
+/** Common argument AST; only extension aggregate signatures may end a type at ORDER BY. */
+RoutineReference.Argument RoutineArgument(boolean allowOrderBy):
 { RoutineReference.Argument result = new RoutineReference.Argument(); String name; Token mode; ColDataType type; }
 {
     [
         LOOKAHEAD({ isKeywordAhead("IN") || isKeywordAhead("OUT") || isKeywordAhead("INOUT") || isKeywordAhead("VARIADIC") })
         ( <K_IN> { result.setMode(RoutineReference.Argument.Mode.IN); }
-          | mode=<S_IDENTIFIER> { result.setMode(typeDdlEnum(RoutineReference.Argument.Mode.class, mode.image)); } )
+          | mode=<S_IDENTIFIER> { result.setMode(allowOrderBy
+              ? typeDdlEnum(RoutineReference.Argument.Mode.class, mode.image)
+              : accessEnum(RoutineReference.Argument.Mode.class, mode.image)); } )
     ]
     (
         LOOKAHEAD(ColDataType() ("," | ")" | <K_ORDER>)) type=ColDataType()
         | name=RelObjectName() { result.setName(name); } type=ColDataType()
     )
-    { result.setDataType(type); return result; }
+    {
+        requireAccessSyntax(allowOrderBy || getToken(1).kind != K_ORDER,
+                "ORDER BY requires an aggregate signature");
+        result.setDataType(type);
+        return result;
+    }
 }
 
 RoutineReference RoutineReference(boolean aggregate):
